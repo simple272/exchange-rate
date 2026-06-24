@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>시간별 환율 추이 및 비교*</title>
+    <title>시간별 환율 추이 및 비교</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body {
@@ -31,7 +31,7 @@
         }
         
         .comparison-wrapper {
-            min-height: 54px; 
+            min-height: 70px; 
             margin-bottom: 10px;
             display: flex;
             align-items: center;
@@ -49,6 +49,7 @@
             opacity: 0;
             visibility: hidden;
             transition: opacity 0.2s ease, visibility 0.2s;
+            line-height: 1.5; 
         }
         .comparison-result.active {
             opacity: 1;
@@ -93,7 +94,6 @@
             margin-bottom: 0;
         }
         
-        /* 가로 스크롤을 위한 부모 스크롤 박스 설정 */
         .chart-box {
             position: relative;
             width: 100%;
@@ -104,7 +104,6 @@
             border-radius: 8px;
         }
 
-        /* 실제 차트가 그려질 내부 래퍼 */
         .chart-wrapper {
             position: relative;
             height: 50vh;
@@ -1021,11 +1020,11 @@
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            // 🛠️ 터치 최적화: 가격 차이가 나도 동일한 X축 인덱스(날짜) 데이터를 모두 툴팁에 로드
             interaction: {
                 mode: 'index',     
                 intersect: false   
             },
+            // 🛠️ 터치 시 상단 박스를 건드리던 onHover 이벤트를 제거했습니다.
             scales: {
                 y: { 
                     grace: '5%',
@@ -1043,31 +1042,22 @@
             plugins: {
                 legend: {
                     position: 'top',
-                    labels: {
-                        boxWidth: 10,
-                        padding: 8,
-                        font: { size: 11 }
-                    }
+                    labels: { boxWidth: 10, padding: 8, font: { size: 11 } }
                 },
-                // 🛠️ 툴팁 커스텀 설정 추가
                 tooltip: {
                     itemSort: function(a, b) {
-                        return a.datasetIndex - b.datasetIndex; // 터치 시 툴팁 정렬 순서 고정
+                        return a.datasetIndex - b.datasetIndex; 
                     },
                     callbacks: {
                         footer: function(context) {
-                            // 현재 체크박스가 정확히 2개 켜져 있을 때만 계산 작동
                             const checkedBoxes = document.querySelectorAll('#filterGroup input:checked');
                             if (checkedBoxes.length !== 2) return '';
 
-                            // interaction.mode가 'index'이므로 날짜가 같으면 context 배열에 2개의 데이터가 잡힙니다.
                             if (context.length === 2) {
                                 const valA = context[0].parsed.y;
                                 const valB = context[1].parsed.y;
-                                
-                                // 두 데이터의 차이값 계산
                                 const diff = (valB - valA).toFixed(2);
-                                const absDiff = Math.abs(diff) * 100;
+                                const absDiff = Math.round(Math.abs(diff) * 100);
 
                                 if (diff > 0) {
                                     return `
@@ -1090,7 +1080,7 @@
 
     updateChartAndComparison();
 
-    // 6. 업데이트 및 비교 로직
+    // 6. 업데이트 및 비교 로직 (전체 비교 + 최근 7개 비교 유지)
     function updateChartAndComparison() {
         const checkedHours = Array.from(document.querySelectorAll('#filterGroup input:checked'))
                                   .map(cb => cb.value);
@@ -1105,32 +1095,48 @@
             const hourA = checkedHours[0];
             const hourB = checkedHours[1];
             
-            let hourAWin = 0;
-            let hourBWin = 0;
-            let drawCount = 0;
+            // [1] 전체 데이터 비교 변수
+            let totalAWin = 0, totalBWin = 0, totalDraw = 0;
+
+            // [2] 최근 7개 데이터 비교 변수
+            let recentAWin = 0, recentBWin = 0, recentDraw = 0;
+            const recent7Dates = labelsDates.slice(-7); 
 
             labelsDates.forEach(date => {
                 const valA = rawData[`${date} ${hourA}`];
                 const valB = rawData[`${date} ${hourB}`];
 
                 if (valA !== undefined && valB !== undefined) {
-                    if (valA > valB) hourAWin++;
-                    else if (valB > valA) hourBWin++;
-                    else drawCount++;
+                    if (valA > valB) totalAWin++;
+                    else if (valB > valA) totalBWin++;
+                    else totalDraw++;
+
+                    if (recent7Dates.includes(date)) {
+                        if (valA > valB) recentAWin++;
+                        else if (valB > valA) recentBWin++;
+                        else recentDraw++;
+                    }
                 }
             });
 
-            let message = `📊 <strong>${hourA}시(${hourAWin}회)</strong> vs <strong>${hourB}시(${hourBWin}회)</strong>: `;
-            if (hourAWin > hourBWin) {
-                message += `<strong>${hourA}시</strong> 우세`;
-            } else if (hourBWin > hourAWin) {
-                message += `<strong>${hourB}시</strong> 우세`;
-            } else {
-                message += `동등 무승부`;
-            }
-            if(drawCount > 0) message += `, 동일${drawCount}`;
+            // 문구 빌드: (1) 전체 비교 결과
+            let totalResultText = `<strong>${hourA}시(${totalAWin}회)</strong> vs <strong>${hourB}시(${totalBWin}회)</strong> → `;
+            if (totalAWin > totalBWin) totalResultText += `<strong>${hourA}시</strong> 우세`;
+            else if (totalBWin > totalAWin) totalResultText += `<strong>${hourB}시</strong> 우세`;
+            else totalResultText += `무승부`;
+            if (totalDraw > 0) totalResultText += ` (동일 ${totalDraw})`;
 
-            compBox.innerHTML = message;
+            // 문구 빌드: (2) 최근 7개 비교 결과
+            let recentResultText = `<strong>${hourA}시(${recentAWin}회)</strong> vs <strong>${hourB}시(${recentBWin}회)</strong> → `;
+            if (recentAWin > recentBWin) recentResultText += `<strong>${hourA}시</strong> 우세`;
+            else if (recentBWin > recentAWin) recentResultText += `<strong>${hourB}시</strong> 우세`;
+            else recentResultText += `무승부`;
+            if (recentDraw > 0) recentResultText += ` (동일 ${recentDraw})`;
+
+            let finalMessage = `📊 <strong>전체 기간:</strong> ${totalResultText}<br>`;
+            finalMessage += `⏱️ <strong>최근 7회:</strong> ${recentResultText}`;
+
+            compBox.innerHTML = finalMessage;
             compBox.classList.add('active');
         } else {
             compBox.classList.remove('active');
