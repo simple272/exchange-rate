@@ -1257,6 +1257,14 @@
     let currentSortMode = 'recent'; 
     let activeSubCharts = {}; 
 
+    // 중앙값(Median) 계산 헬퍼 함수
+    function getMedian(arr) {
+        if (arr.length === 0) return 0;
+        const sorted = [...arr].sort((a, b) => a - b);
+        const mid = Math.floor(sorted.length / 2);
+        return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+    }
+
     updateChartAndComparison();
     runSimulationEngine(); 
 
@@ -1309,10 +1317,9 @@
         }
     }
 
-    // 2대 핵심 지표 동적 분석 연산 엔진 (누락 데이터 수집 파트 강화)
     function runSimulationEngine() {
         calculatedSimulations = [];
-        const maxGlobalDays = labelsDates.length; // 시스템상 존재하는 전체 일수
+        const maxGlobalDays = labelsDates.length;
         const maxRecentDays = Math.min(7, maxGlobalDays);
 
         allHours.forEach((buyHour, buyIdx) => {
@@ -1323,20 +1330,27 @@
             }
 
             let totalValidDays = 0, totalWins = 0, totalMaxProfitSum = 0;
-            let recentValidDays = 0, recentWins = 0, recentMaxProfitSum = 0;
-            const sellHourMetrics = {};
+            let recentValidDays = 0, recentWins = 0;
+            
+            // 아웃라이어 방어용 개별 수익 데이터 수집용 배열 추가
+            const totalDayMaxProfits = [];
+            const recentDayMaxProfits = [];
 
+            const sellHourMetrics = {};
             targetSellHours.forEach(h => { 
-                sellHourMetrics[h] = { totalWinCount: 0, totalProfitSum: 0, recentWinCount: 0, recentProfitSum: 0 };
+                sellHourMetrics[h] = { 
+                    totalWinCount: 0, totalProfitSum: 0, 
+                    recentWinCount: 0, recentProfitSum: 0,
+                    totalProfits: [], recentProfits: [] 
+                };
             });
 
             labelsDates.forEach(date => {
                 const buyVal = rawData[`${date} ${buyHour}`];
-                if (buyVal === undefined) return; // 당일 매수 데이터 누락 시 계산 제외
+                if (buyVal === undefined) return; 
 
-                // 🔥 매수 이후 매도 가능한 타겟 시간 중 데이터가 유효한 시간만 필터
                 const availableSellHours = targetSellHours.filter(sh => rawData[`${date} ${sh}`] !== undefined);
-                if (availableSellHours.length === 0) return; // 당일 매도 대조군이 전멸했다면 분모에서 스킵
+                if (availableSellHours.length === 0) return; 
 
                 const isRecent = recent7Dates.includes(date);
                 totalValidDays++;
@@ -1352,9 +1366,12 @@
                     if (profit > 0) {
                         sellHourMetrics[sellHour].totalWinCount++;
                         sellHourMetrics[sellHour].totalProfitSum += profit;
+                        sellHourMetrics[sellHour].totalProfits.push(Math.round(profit * 100));
+                        
                         if (isRecent) {
                             sellHourMetrics[sellHour].recentWinCount++;
                             sellHourMetrics[sellHour].recentProfitSum += profit;
+                            sellHourMetrics[sellHour].recentProfits.push(Math.round(profit * 100));
                         }
                     }
                     if (profit > dayMaxProfit) dayMaxProfit = profit;
@@ -1364,19 +1381,24 @@
                 if (hasValidTrade && dayMaxProfit > 0) {
                     totalWins++;
                     totalMaxProfitSum += dayMaxProfit;
+                    totalDayMaxProfits.push(Math.round(dayMaxProfit * 100));
+                    
                     if (isRecent) {
                         recentWins++;
-                        recentMaxProfitSum += dayMaxProfit;
+                        recentDayMaxProfits.push(Math.round(dayMaxProfit * 100));
                     }
                 }
             });
 
             const totalRate = totalValidDays > 0 ? ((totalWins / totalValidDays) * 100).toFixed(1) : 0;
+            // 장기 분석은 전통적인 대수의 법칙에 의거한 단순 평균값 유지
             const totalAvgProfit = totalWins > 0 ? (totalMaxProfitSum / totalWins * 100).toFixed(0) : 0;
+            
             const recentRate = recentValidDays > 0 ? ((recentWins / recentValidDays) * 100).toFixed(1) : 0;
-            const recentAvgProfit = recentWins > 0 ? (recentMaxProfitSum / recentWins * 100).toFixed(0) : 0;
+            // 🔥 [개선] 최근 7회 단기 카드 메인 지표는 아웃라이어 방어를 위해 '중앙값(Median)'을 사용
+            const recentMedianProfit = recentDayMaxProfits.length > 0 ? getMedian(recentDayMaxProfits).toFixed(0) : 0;
 
-            // --- 베스트 매도 타겟 추출 ---
+            // --- 베스트 매도 타겟 추출 (중앙값 연산 기반 분기) ---
             let totalBestProfitHour = '없음', totalBestProfitVal = -1;
             let totalBestCountHour = '없음', totalBestCountVal = -1;
             Object.entries(sellHourMetrics).forEach(([h, m]) => {
@@ -1388,12 +1410,12 @@
             let recentBestProfitHour = '없음', recentBestProfitVal = -1;
             let recentBestCountHour = '없음', recentBestCountVal = -1;
             Object.entries(sellHourMetrics).forEach(([h, m]) => {
-                const avgProfit = m.recentWinCount > 0 ? (m.recentProfitSum / m.recentWinCount) : 0;
-                if (avgProfit > recentBestProfitVal) { recentBestProfitVal = avgProfit; recentBestProfitHour = h; }
+                // 🔥 [개선] 단기 타겟 추천 역시 개별 매도 시간대의 '중앙값' 기준으로 소팅하여 왜곡 방지
+                const medianProfit = m.recentProfits.length > 0 ? getMedian(m.recentProfits) : 0;
+                if (medianProfit > recentBestProfitVal) { recentBestProfitVal = medianProfit; recentBestProfitHour = h; }
                 if (m.recentWinCount > recentBestCountVal) { recentBestCountVal = m.recentWinCount; recentBestCountHour = h; }
             });
 
-            // 누락 통계 산출
             const totalMissing = maxGlobalDays - totalValidDays;
             const totalDataFillRate = maxGlobalDays > 0 ? Math.round((totalValidDays / maxGlobalDays) * 100) : 0;
             const recentMissing = maxRecentDays - recentValidDays;
@@ -1404,15 +1426,14 @@
                 totalRate: parseFloat(totalRate),
                 totalAvgProfit: parseInt(totalAvgProfit),
                 recentRate: parseFloat(recentRate),
-                recentAvgProfit: parseInt(recentAvgProfit),
+                recentMedianProfit: parseInt(recentMedianProfit), // 중앙값 매핑
                 
-                // 신뢰도 연산용 데이터 추가
                 totalValidDays, totalMissing, totalDataFillRate, maxGlobalDays,
                 recentValidDays, recentMissing, recentDataFillRate, maxRecentDays,
                 
                 totalBestProfitHour, totalBestProfitTick: Math.round(totalBestProfitVal * 100),
                 totalBestCountHour, totalBestCountVal,
-                recentBestProfitHour, recentBestProfitTick: Math.round(recentBestProfitVal * 100),
+                recentBestProfitHour, recentBestProfitTick: Math.round(recentBestProfitVal), // 틱 가공 완료
                 recentBestCountHour, recentBestCountVal,
                 
                 sellHourMetrics,
@@ -1446,7 +1467,8 @@
         Object.values(dataObj.sellHourMetrics).forEach(metric => {
             if (currentSortMode === 'recent') {
                 countData.push(metric.recentWinCount);
-                profitData.push(metric.recentWinCount > 0 ? Math.round((metric.recentProfitSum / metric.recentWinCount) * 100) : 0);
+                // 서브 차트 선형 그래프도 단기 분석 시 중앙값을 뿌려주도록 바인딩
+                profitData.push(metric.recentProfits.length > 0 ? getMedian(metric.recentProfits) : 0);
             } else {
                 countData.push(metric.totalWinCount);
                 profitData.push(metric.totalWinCount > 0 ? Math.round((metric.totalProfitSum / metric.totalWinCount) * 100) : 0);
@@ -1460,7 +1482,7 @@
                 labels: labels,
                 datasets: [
                     { label: '익절 기회 (회)', data: countData, backgroundColor: '#007AFF25', borderColor: '#007AFF', borderWidth: 1, yAxisID: 'yCount', order: 2 },
-                    { label: '평균 차익 (틱)', data: profitData, type: 'line', borderColor: '#e63946', backgroundColor: '#e63946', borderWidth: 2, pointRadius: 3, tension: 0.1, yAxisID: 'yProfit', order: 1 }
+                    { label: currentSortMode === 'recent' ? '차익 중앙값 (틱)' : '평균 차익 (틱)', data: profitData, type: 'line', borderColor: '#e63946', backgroundColor: '#e63946', borderWidth: 2, pointRadius: 3, tension: 0.1, yAxisID: 'yProfit', order: 1 }
                 ]
             },
             options: {
@@ -1484,7 +1506,8 @@
         displayData.sort((a, b) => {
             if (a.isLast) return 1;
             if (b.isLast) return -1;
-            return currentSortMode === 'recent' ? (b.recentRate - a.recentRate || b.recentAvgProfit - a.recentAvgProfit) : (b.totalRate - a.totalRate || b.totalAvgProfit - a.totalAvgProfit);
+            // 단기 소팅 시 익절 확률 다음으로 중앙값(recentMedianProfit)을 기준 정렬
+            return currentSortMode === 'recent' ? (b.recentRate - a.recentRate || b.recentMedianProfit - a.recentMedianProfit) : (b.totalRate - a.totalRate || b.totalAvgProfit - a.totalAvgProfit);
         });
 
         displayData.forEach((res, idx) => {
@@ -1502,33 +1525,42 @@
             } else {
                 card.setAttribute('onclick', `toggleCardChart(this, '${res.buyHour}')`);
                 
-                let statsHtml = '', detailsHtml = '', reliabilityHtml = '';
+                let statsHtml = '', detailsHtml = '';
+                const reliabilityHtml = currentSortMode === 'recent' 
+                    ? `
+                        <div class="data-reliability">
+                            <div class="reliability-header">
+                                <span>📋 유효 데이터: <strong>${res.recentValidDays}일</strong> / 총 ${res.maxRecentDays}일 (누락: ${res.recentMissing}일)</span>
+                                <span>참여율 ${res.recentDataFillRate}% ${res.recentValidDays < 3 ? '<span class="reliability-warning">⚠️ 표본부족 경고</span>' : ''}</span>
+                            </div>
+                            <div class="reliability-bar-bg">
+                                <div class="reliability-bar-fill" style="width: ${res.recentDataFillRate}%; background: ${res.recentValidDays < 3 ? '#ff9f43' : '#20c997'};"></div>
+                            </div>
+                        </div>`
+                    : `
+                        <div class="data-reliability">
+                            <div class="reliability-header">
+                                <span>📋 유효 데이터: <strong>${res.totalValidDays}일</strong> / 총 ${res.maxGlobalDays}일 (누락: ${res.totalMissing}일)</span>
+                                <span>참여율 ${res.totalDataFillRate}% ${res.totalValidDays < 5 ? '<span class="reliability-warning">⚠️ 표본부족</span>' : ''}</span>
+                            </div>
+                            <div class="reliability-bar-bg">
+                                <div class="reliability-bar-fill" style="width: ${res.totalDataFillRate}%;"></div>
+                            </div>
+                        </div>`;
 
                 if (currentSortMode === 'recent') {
+                    // 💡 단기 안내 문구 고도화 (평균 최고 차익 -> 차익 중앙값 변환 안내)
                     statsHtml = `
                         ⏱️ 최근 7회 익절 확률: <span class="rate">${res.recentRate}%</span><br>
-                        📈 익절 성공시 평균 최고 차익: <span class="profit">+${res.recentAvgProfit} 틱</span>`;
+                        📈 익절 성공시 **차익 중앙값(Median)**: <span class="profit">+${res.recentMedianProfit} 틱</span>`;
                     
                     detailsHtml = `
                         <div class="rank-details-group">
                             <div class="rank-details profit-focus">
-                                🎯 <strong>[최고수익] 주로 ${res.recentBestProfitHour}시 매도</strong>할 때 최대 이익 (평균 +${res.recentBestProfitTick}틱)
+                                🎯 <strong>[최고수익] 주로 ${res.recentBestProfitHour}시 매도</strong>할 때 왜곡 없는 기대 차익 최대 (중앙값 +${res.recentBestProfitTick}틱)
                             </div>
                             <div class="rank-details count-focus">
                                 🛡️ <strong>[최다익절] 주로 ${res.recentBestCountHour}시 매도</strong>할 때 익절 확률 최고 (${res.recentBestCountVal}회 성공)
-                            </div>
-                        </div>`;
-
-                    // 단기 신뢰도 가이드
-                    const isLowSample = res.recentValidDays < 3 ? '<span class="reliability-warning">⚠️ 표본부족 경고</span>' : '';
-                    reliabilityHtml = `
-                        <div class="data-reliability">
-                            <div class="reliability-header">
-                                <span>📋 유효 데이터: <strong>${res.recentValidDays}일</strong> / 총 ${res.maxRecentDays}일 (누락: ${res.recentMissing}일)</span>
-                                <span>참여율 ${res.recentDataFillRate}% ${isLowSample}</span>
-                            </div>
-                            <div class="reliability-bar-bg">
-                                <div class="reliability-bar-fill" style="width: ${res.recentDataFillRate}%; background: ${res.recentValidDays < 3 ? '#ff9f43' : '#20c997'};"></div>
                             </div>
                         </div>`;
                 } else {
@@ -1543,19 +1575,6 @@
                             </div>
                             <div class="rank-details count-focus">
                                 🛡️ <strong>[최다익절] 주로 ${res.totalBestCountHour}시 매도</strong>할 때 익절 확률 최고 (${res.totalBestCountVal}회 성공)
-                            </div>
-                        </div>`;
-
-                    // 장기 신뢰도 가이드
-                    const isLowSample = res.totalValidDays < 5 ? '<span class="reliability-warning">⚠️ 표본부족</span>' : '';
-                    reliabilityHtml = `
-                        <div class="data-reliability">
-                            <div class="reliability-header">
-                                <span>📋 유효 데이터: <strong>${res.totalValidDays}일</strong> / 총 ${res.maxGlobalDays}일 (누락: ${res.totalMissing}일)</span>
-                                <span>참여율 ${res.totalDataFillRate}% ${isLowSample}</span>
-                            </div>
-                            <div class="reliability-bar-bg">
-                                <div class="reliability-bar-fill" style="width: ${res.totalDataFillRate}%;"></div>
                             </div>
                         </div>`;
                 }
