@@ -216,6 +216,42 @@
             color: #007AFF;
             font-weight: 600;
         }
+
+        /* 데이터 신뢰도 가이드 및 게이지바 */
+        .data-reliability {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-size: 11px;
+            color: #666;
+            margin-top: 4px;
+        }
+        .reliability-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 4px;
+        }
+        .reliability-bar-bg {
+            width: 100%;
+            height: 4px;
+            background: #e9ecef;
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        .reliability-bar-fill {
+            height: 100%;
+            background: #20c997;
+            border-radius: 2px;
+            transition: width 0.3s;
+        }
+        .reliability-warning {
+            color: #f59f00;
+            font-weight: bold;
+            display: inline-flex;
+            align-items: center;
+            gap: 2px;
+        }
         
         /* 다중 상세 가이드 영역 */
         .rank-details-group {
@@ -1221,7 +1257,6 @@
     let currentSortMode = 'recent'; 
     let activeSubCharts = {}; 
 
-    // 초기화 실행
     updateChartAndComparison();
     runSimulationEngine(); 
 
@@ -1244,7 +1279,7 @@
     function updateChartAndComparison() {
         const checkedHours = Array.from(document.querySelectorAll('#filterGroup input:checked')).map(cb => cb.value);
         const filteredDatasets = fullDatasets.filter(ds => checkedHours.includes(ds.originalHour));
-        exchangeChart.data.datasets = filteredDatasets.length > 0 ? filteredDatasets :  [];//JSON.parse(JSON.stringify(fullDatasets));
+        exchangeChart.data.datasets = filteredDatasets.length > 0 ? filteredDatasets :  [];
         exchangeChart.update();
 
         const compBox = document.getElementById('comparisonBox');
@@ -1274,9 +1309,11 @@
         }
     }
 
-    // 2대 핵심 지표 동적 분석 연산 엔진
+    // 2대 핵심 지표 동적 분석 연산 엔진 (누락 데이터 수집 파트 강화)
     function runSimulationEngine() {
         calculatedSimulations = [];
+        const maxGlobalDays = labelsDates.length; // 시스템상 존재하는 전체 일수
+        const maxRecentDays = Math.min(7, maxGlobalDays);
 
         allHours.forEach((buyHour, buyIdx) => {
             const targetSellHours = allHours.slice(buyIdx + 1);
@@ -1285,8 +1322,8 @@
                 return;
             }
 
-            let totalDays = 0, totalWins = 0, totalMaxProfitSum = 0;
-            let recentDays = 0, recentWins = 0, recentMaxProfitSum = 0;
+            let totalValidDays = 0, totalWins = 0, totalMaxProfitSum = 0;
+            let recentValidDays = 0, recentWins = 0, recentMaxProfitSum = 0;
             const sellHourMetrics = {};
 
             targetSellHours.forEach(h => { 
@@ -1295,19 +1332,23 @@
 
             labelsDates.forEach(date => {
                 const buyVal = rawData[`${date} ${buyHour}`];
-                if (buyVal === undefined) return;
+                if (buyVal === undefined) return; // 당일 매수 데이터 누락 시 계산 제외
+
+                // 🔥 매수 이후 매도 가능한 타겟 시간 중 데이터가 유효한 시간만 필터
+                const availableSellHours = targetSellHours.filter(sh => rawData[`${date} ${sh}`] !== undefined);
+                if (availableSellHours.length === 0) return; // 당일 매도 대조군이 전멸했다면 분모에서 스킵
 
                 const isRecent = recent7Dates.includes(date);
-                totalDays++;
-                if (isRecent) recentDays++;
+                totalValidDays++;
+                if (isRecent) recentValidDays++;
 
                 let dayMaxProfit = 0;
+                let hasValidTrade = false;
 
-                targetSellHours.forEach(sellHour => {
+                availableSellHours.forEach(sellHour => {
                     const sellVal = rawData[`${date} ${sellHour}`];
-                    if (sellVal === undefined) return;
-
                     const profit = sellVal - buyVal;
+                    
                     if (profit > 0) {
                         sellHourMetrics[sellHour].totalWinCount++;
                         sellHourMetrics[sellHour].totalProfitSum += profit;
@@ -1317,9 +1358,10 @@
                         }
                     }
                     if (profit > dayMaxProfit) dayMaxProfit = profit;
+                    hasValidTrade = true;
                 });
 
-                if (dayMaxProfit > 0) {
+                if (hasValidTrade && dayMaxProfit > 0) {
                     totalWins++;
                     totalMaxProfitSum += dayMaxProfit;
                     if (isRecent) {
@@ -1329,31 +1371,33 @@
                 }
             });
 
-            const totalRate = totalDays > 0 ? ((totalWins / totalDays) * 100).toFixed(1) : 0;
+            const totalRate = totalValidDays > 0 ? ((totalWins / totalValidDays) * 100).toFixed(1) : 0;
             const totalAvgProfit = totalWins > 0 ? (totalMaxProfitSum / totalWins * 100).toFixed(0) : 0;
-            const recentRate = recentDays > 0 ? ((recentWins / recentDays) * 100).toFixed(1) : 0;
+            const recentRate = recentValidDays > 0 ? ((recentWins / recentValidDays) * 100).toFixed(1) : 0;
             const recentAvgProfit = recentWins > 0 ? (recentMaxProfitSum / recentWins * 100).toFixed(0) : 0;
 
-            // --- 2가지 지표 분리 추출 연산 ---
-            // 1) 전체 기간 분석
+            // --- 베스트 매도 타겟 추출 ---
             let totalBestProfitHour = '없음', totalBestProfitVal = -1;
             let totalBestCountHour = '없음', totalBestCountVal = -1;
-            
             Object.entries(sellHourMetrics).forEach(([h, m]) => {
                 const avgProfit = m.totalWinCount > 0 ? (m.totalProfitSum / m.totalWinCount) : 0;
                 if (avgProfit > totalBestProfitVal) { totalBestProfitVal = avgProfit; totalBestProfitHour = h; }
                 if (m.totalWinCount > totalBestCountVal) { totalBestCountVal = m.totalWinCount; totalBestCountHour = h; }
             });
 
-            // 2) 최근 단기 분석
             let recentBestProfitHour = '없음', recentBestProfitVal = -1;
             let recentBestCountHour = '없음', recentBestCountVal = -1;
-            
             Object.entries(sellHourMetrics).forEach(([h, m]) => {
                 const avgProfit = m.recentWinCount > 0 ? (m.recentProfitSum / m.recentWinCount) : 0;
                 if (avgProfit > recentBestProfitVal) { recentBestProfitVal = avgProfit; recentBestProfitHour = h; }
                 if (m.recentWinCount > recentBestCountVal) { recentBestCountVal = m.recentWinCount; recentBestCountHour = h; }
             });
+
+            // 누락 통계 산출
+            const totalMissing = maxGlobalDays - totalValidDays;
+            const totalDataFillRate = maxGlobalDays > 0 ? Math.round((totalValidDays / maxGlobalDays) * 100) : 0;
+            const recentMissing = maxRecentDays - recentValidDays;
+            const recentDataFillRate = maxRecentDays > 0 ? Math.round((recentValidDays / maxRecentDays) * 100) : 0;
 
             calculatedSimulations.push({
                 buyHour,
@@ -1362,7 +1406,10 @@
                 recentRate: parseFloat(recentRate),
                 recentAvgProfit: parseInt(recentAvgProfit),
                 
-                // 분리된 베스트 결과 매핑
+                // 신뢰도 연산용 데이터 추가
+                totalValidDays, totalMissing, totalDataFillRate, maxGlobalDays,
+                recentValidDays, recentMissing, recentDataFillRate, maxRecentDays,
+                
                 totalBestProfitHour, totalBestProfitTick: Math.round(totalBestProfitVal * 100),
                 totalBestCountHour, totalBestCountVal,
                 recentBestProfitHour, recentBestProfitTick: Math.round(recentBestProfitVal * 100),
@@ -1455,7 +1502,7 @@
             } else {
                 card.setAttribute('onclick', `toggleCardChart(this, '${res.buyHour}')`);
                 
-                let statsHtml = '', detailsHtml = '';
+                let statsHtml = '', detailsHtml = '', reliabilityHtml = '';
 
                 if (currentSortMode === 'recent') {
                     statsHtml = `
@@ -1466,11 +1513,22 @@
                         <div class="rank-details-group">
                             <div class="rank-details profit-focus">
                                 🎯 <strong>[최고수익] 주로 ${res.recentBestProfitHour}시 매도</strong>할 때 최대 이익 (평균 +${res.recentBestProfitTick}틱)
-                                <br><small>→ 차트의 빨간 선 피크: 리스크를 감수하더라도 가장 큰 수익을 노릴 수 있는 시간대입니다.</small>
                             </div>
                             <div class="rank-details count-focus">
                                 🛡️ <strong>[최다익절] 주로 ${res.recentBestCountHour}시 매도</strong>할 때 익절 확률 최고 (${res.recentBestCountVal}회 성공)
-                                <br><small>→ 차트의 파란 막대 피크: 물리지 않고 가장 안전하게 빠져나올 수 있는 탈출 시간대입니다.</small>
+                            </div>
+                        </div>`;
+
+                    // 단기 신뢰도 가이드
+                    const isLowSample = res.recentValidDays < 3 ? '<span class="reliability-warning">⚠️ 표본부족 경고</span>' : '';
+                    reliabilityHtml = `
+                        <div class="data-reliability">
+                            <div class="reliability-header">
+                                <span>📋 유효 데이터: <strong>${res.recentValidDays}일</strong> / 총 ${res.maxRecentDays}일 (누락: ${res.recentMissing}일)</span>
+                                <span>참여율 ${res.recentDataFillRate}% ${isLowSample}</span>
+                            </div>
+                            <div class="reliability-bar-bg">
+                                <div class="reliability-bar-fill" style="width: ${res.recentDataFillRate}%; background: ${res.recentValidDays < 3 ? '#ff9f43' : '#20c997'};"></div>
                             </div>
                         </div>`;
                 } else {
@@ -1487,6 +1545,19 @@
                                 🛡️ <strong>[최다익절] 주로 ${res.totalBestCountHour}시 매도</strong>할 때 익절 확률 최고 (${res.totalBestCountVal}회 성공)
                             </div>
                         </div>`;
+
+                    // 장기 신뢰도 가이드
+                    const isLowSample = res.totalValidDays < 5 ? '<span class="reliability-warning">⚠️ 표본부족</span>' : '';
+                    reliabilityHtml = `
+                        <div class="data-reliability">
+                            <div class="reliability-header">
+                                <span>📋 유효 데이터: <strong>${res.totalValidDays}일</strong> / 총 ${res.maxGlobalDays}일 (누락: ${res.totalMissing}일)</span>
+                                <span>참여율 ${res.totalDataFillRate}% ${isLowSample}</span>
+                            </div>
+                            <div class="reliability-bar-bg">
+                                <div class="reliability-bar-fill" style="width: ${res.totalDataFillRate}%;"></div>
+                            </div>
+                        </div>`;
                 }
 
                 card.innerHTML = `
@@ -1496,6 +1567,7 @@
                     </div>
                     <div class="rank-stats">${statsHtml}</div>
                     ${detailsHtml}
+                    ${reliabilityHtml}
                     <div class="rank-chart-container" onclick="event.stopPropagation();">
                         <canvas id="subChart-${res.buyHour}"></canvas>
                     </div>`;
