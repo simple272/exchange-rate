@@ -1268,6 +1268,13 @@
     updateChartAndComparison();
     runSimulationEngine(); 
 
+    // 🔥 [추가] 차트 박스를 맨 오른쪽(최신 데이터)으로 스크롤 이동
+    const chartBox = document.getElementById('chartBox');
+    if (chartBox) {
+        chartBox.scrollLeft = chartBox.scrollWidth;
+    }
+
+
     window.switchTab = function(tabId) {
         document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
         document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
@@ -1308,7 +1315,7 @@
             });
 
             let totalText = `<strong>${hourA}시(${totalAWin}회)</strong> vs <strong>${hourB}시(${totalBWin}회)</strong>, ` + (totalAWin > totalBWin ? `<strong>${hourA}시</strong> 우세, 동일(${totalDraw})` : totalBWin > totalAWin ? `<strong>${hourB}시</strong> 우세, 동일(${totalDraw})` : `무승부, 동일(${totalDraw})`);
-            let recentText = `<strong>${hourA}시(${recentAWin}회)</strong> vs <strong>${hourB}시(${recentBWin}회)</strong>, ` + (recentAWin > recentBWin ? `<strong>${hourA}시</strong> 우세, 동일(${totalDraw})` : recentBWin > recentAWin ? `<strong>${hourB}시</strong> 우세, 동일(${totalDraw})` : `무승부, 동일(${totalDraw})`);
+            let recentText = `<strong>${hourA}시(${recentAWin}회)</strong> vs <strong>${hourB}시(${recentBWin}회)</strong>, ` + (recentAWin > recentBWin ? `<strong>${hourA}시</strong> 우세, 동일(${recentDraw})` : recentBWin > recentAWin ? `<strong>${hourB}시</strong> 우세, 동일(${recentDraw})` : `무승부, 동일(${recentDraw})`);
             compBox.innerHTML = `📊 <strong>전체 기간:</strong> ${totalText}<br>⏱️ <strong>최근 7회:</strong> ${recentText}`;
             compBox.classList.add('active');
         } else {
