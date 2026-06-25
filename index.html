@@ -1826,7 +1826,7 @@
         checkbox.value = hour;
         checkbox.addEventListener('change', updateChartAndComparison);
         label.appendChild(checkbox);
-        label.appendChild(document.createTextNode(hour + '시'));
+        label.appendChild(document.createTextNode(hour)); // + '시'
         filterGroup.appendChild(label);
     });
 
