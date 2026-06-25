@@ -25,9 +25,58 @@
         }
         h2 {
             text-align: center;
-            margin: 5px 0 15px 0;
+            margin: 5px 0 10px 0;
             font-size: 18px;
             color: #111;
+        }
+
+        /* ⚙️ 컨트롤러 스타일 (동적 개수 설정) */
+        .config-panel {
+            background: #eef2f7;
+            border: 1px solid #dce4ec;
+            border-radius: 8px;
+            padding: 10px 12px;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+        .config-title {
+            font-size: 13px;
+            font-weight: bold;
+            color: #2b3a4a;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .config-input-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .config-input {
+            width: 50px;
+            padding: 6px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: bold;
+            text-align: center;
+        }
+        .config-btn {
+            background: #007AFF;
+            color: #fff;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .config-btn:hover {
+            background: #0056b3;
         }
         
         /* 메인 탭 스타일 */
@@ -301,6 +350,16 @@
 
 <div class="container">
     <h2>시간별 환율 분석 시스템</h2>
+
+    <div class="config-panel">
+        <div class="config-title">⚙️ 단기 분석 설정</div>
+        <div class="config-input-wrapper">
+            <span>최근</span>
+            <input type="number" id="inputTargetCount" class="config-input" value="7" min="1" max="100">
+            <span>회 비교</span>
+            <button class="config-btn" onclick="handleTargetCountChange()">적용</button>
+        </div>
+    </div>
     
     <div class="tabs">
         <button class="tab-button active" onclick="switchTab('chart-tab')">📊 시간별 추이</button>
@@ -326,7 +385,7 @@
 
     <div id="rank-tab" class="tab-content">
         <div class="sub-tabs">
-            <button id="subTabRecent" class="sub-tab-button active" onclick="switchSubTab('recent')">⏱️ 최근 7회 분석 기준 정렬</button>
+            <button id="subTabRecent" class="sub-tab-button active" onclick="switchSubTab('recent')">⏱️ 최근 <span id="textTabCount">7</span>회 분석 기준 정렬</button>
             <button id="subTabTotal" class="sub-tab-button" onclick="switchSubTab('total')">📊 전체 기간 통계 기준 정렬</button>
         </div>
 
@@ -1703,6 +1762,7 @@
   "2026-06-24 22": 5.89,
   "2026-06-24 23": 5.87
 };
+    let targetCount = 7; // 초기값 설정
 
     const datesSet = new Set();
     const hoursSet = new Set();
@@ -1717,7 +1777,9 @@
 
     const labelsDates = Array.from(datesSet).sort();
     const allHours = Array.from(hoursSet).sort();
-    const recent7Dates = labelsDates.slice(-7);
+    
+    // 전역 동적 배열 선언
+    let recentNDates = labelsDates.slice(-targetCount);
 
     const baseWidth = document.getElementById('chartBox').clientWidth || 400;
     const dynamicWidth = Math.max(labelsDates.length * 15, baseWidth);
@@ -1786,9 +1848,7 @@
             plugins: {
                 legend: { position: 'top', labels: { boxWidth: 10, padding: 8, font: { size: 11 } } },
                 tooltip: {
-                    itemSort: function(a, b) {
-                        return a.datasetIndex - b.datasetIndex; 
-                    },
+                    itemSort: function(a, b) { return a.datasetIndex - b.datasetIndex; },
                     callbacks: {
                         footer: function(context) {
                             const checkedBoxes = document.querySelectorAll('#filterGroup input:checked');
@@ -1823,7 +1883,6 @@
     let currentSortMode = 'recent'; 
     let activeSubCharts = {}; 
 
-    // 중앙값(Median) 계산 헬퍼 함수
     function getMedian(arr) {
         if (arr.length === 0) return 0;
         const sorted = [...arr].sort((a, b) => a - b);
@@ -1831,15 +1890,34 @@
         return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
     }
 
+    // 🚀 [핵심 추가] 사용자가 화면에서 input 수정 시 호출되는 핸들러 함수
+    window.handleTargetCountChange = function() {
+        const inputVal = parseInt(document.getElementById('inputTargetCount').value);
+        if (isNaN(inputVal) || inputVal < 1) {
+            alert('1 이상의 올바른 숫자를 입력해주세요.');
+            return;
+        }
+        
+        targetCount = inputVal;
+        document.getElementById('textTabCount').innerText = targetCount; // 서브탭 텍스트 동적 수정
+        recentNDates = labelsDates.slice(-targetCount); // 타겟 데이터 슬라이싱 업데이트
+        
+        // 열려있는 기존 하위 차트들 파괴(초기화)
+        Object.values(activeSubCharts).forEach(chart => chart.destroy());
+        activeSubCharts = {};
+        
+        // 전체 동적 재연산 및 다시 그리기
+        updateChartAndComparison();
+        runSimulationEngine();
+    }
+
     updateChartAndComparison();
     runSimulationEngine(); 
 
-    // 🔥 [추가] 차트 박스를 맨 오른쪽(최신 데이터)으로 스크롤 이동
     const chartBox = document.getElementById('chartBox');
     if (chartBox) {
         chartBox.scrollLeft = chartBox.scrollWidth;
     }
-
 
     window.switchTab = function(tabId) {
         document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
@@ -1874,7 +1952,7 @@
                 const valB = rawData[`${date} ${hourB}`];
                 if (valA !== undefined && valB !== undefined) {
                     if (valA > valB) totalAWin++; else if (valB > valA) totalBWin++; else totalDraw++;
-                    if (recent7Dates.includes(date)) {
+                    if (recentNDates.includes(date)) {
                         if (valA > valB) recentAWin++; else if (valB > valA) recentBWin++; else recentDraw++;
                     }
                 }
@@ -1882,10 +1960,10 @@
 
             let totalText = `<strong>${hourA}시(${totalAWin}회)</strong> vs <strong>${hourB}시(${totalBWin}회)</strong>, ` + (totalAWin > totalBWin ? `<strong>${hourA}시</strong> 우세, 동일(${totalDraw})` : totalBWin > totalAWin ? `<strong>${hourB}시</strong> 우세, 동일(${totalDraw})` : `무승부, 동일(${totalDraw})`);
             let recentText = `<strong>${hourA}시(${recentAWin}회)</strong> vs <strong>${hourB}시(${recentBWin}회)</strong>, ` + (recentAWin > recentBWin ? `<strong>${hourA}시</strong> 우세, 동일(${recentDraw})` : recentBWin > recentAWin ? `<strong>${hourB}시</strong> 우세, 동일(${recentDraw})` : `무승부, 동일(${recentDraw})`);
-            compBox.innerHTML = `📊 <strong>전체 기간:</strong> ${totalText}<br>⏱️ <strong>최근 7회:</strong> ${recentText}`;
+            compBox.innerHTML = `📊 <strong>전체 기간:</strong> ${totalText}<br>⏱️ <strong>최근 ${targetCount}회:</strong> ${recentText}`;
             compBox.classList.add('active');
         } else {
-            compBox.innerHTML = `📊 <strong>전체 기간:</strong> <br>⏱️ <strong>최근 7회:</strong> `;
+            compBox.innerHTML = `📊 <strong>전체 기간:</strong> <br>⏱️ <strong>최근 ${targetCount}회:</strong> `;
             compBox.classList.add('active');
         }
     }
@@ -1893,7 +1971,7 @@
     function runSimulationEngine() {
         calculatedSimulations = [];
         const maxGlobalDays = labelsDates.length;
-        const maxRecentDays = Math.min(7, maxGlobalDays);
+        const maxRecentDays = Math.min(targetCount, maxGlobalDays); 
 
         allHours.forEach((buyHour, buyIdx) => {
             const targetSellHours = allHours.slice(buyIdx + 1);
@@ -1905,7 +1983,6 @@
             let totalValidDays = 0, totalWins = 0, totalMaxProfitSum = 0;
             let recentValidDays = 0, recentWins = 0;
             
-            // 아웃라이어 방어용 개별 수익 데이터 수집용 배열 추가
             const totalDayMaxProfits = [];
             const recentDayMaxProfits = [];
 
@@ -1925,7 +2002,7 @@
                 const availableSellHours = targetSellHours.filter(sh => rawData[`${date} ${sh}`] !== undefined);
                 if (availableSellHours.length === 0) return; 
 
-                const isRecent = recent7Dates.includes(date);
+                const isRecent = recentNDates.includes(date); 
                 totalValidDays++;
                 if (isRecent) recentValidDays++;
 
@@ -1964,14 +2041,11 @@
             });
 
             const totalRate = totalValidDays > 0 ? ((totalWins / totalValidDays) * 100).toFixed(1) : 0;
-            // 장기 분석은 전통적인 대수의 법칙에 의거한 단순 평균값 유지
             const totalAvgProfit = totalWins > 0 ? (totalMaxProfitSum / totalWins * 100).toFixed(0) : 0;
             
             const recentRate = recentValidDays > 0 ? ((recentWins / recentValidDays) * 100).toFixed(1) : 0;
-            // 🔥 [개선] 최근 7회 단기 카드 메인 지표는 아웃라이어 방어를 위해 '중앙값(Median)'을 사용
             const recentMedianProfit = recentDayMaxProfits.length > 0 ? getMedian(recentDayMaxProfits).toFixed(0) : 0;
 
-            // --- 베스트 매도 타겟 추출 (중앙값 연산 기반 분기) ---
             let totalBestProfitHour = '없음', totalBestProfitVal = -1;
             let totalBestCountHour = '없음', totalBestCountVal = -1;
             Object.entries(sellHourMetrics).forEach(([h, m]) => {
@@ -1983,7 +2057,6 @@
             let recentBestProfitHour = '없음', recentBestProfitVal = -1;
             let recentBestCountHour = '없음', recentBestCountVal = -1;
             Object.entries(sellHourMetrics).forEach(([h, m]) => {
-                // 🔥 [개선] 단기 타겟 추천 역시 개별 매도 시간대의 '중앙값' 기준으로 소팅하여 왜곡 방지
                 const medianProfit = m.recentProfits.length > 0 ? getMedian(m.recentProfits) : 0;
                 if (medianProfit > recentBestProfitVal) { recentBestProfitVal = medianProfit; recentBestProfitHour = h; }
                 if (m.recentWinCount > recentBestCountVal) { recentBestCountVal = m.recentWinCount; recentBestCountHour = h; }
@@ -1999,14 +2072,14 @@
                 totalRate: parseFloat(totalRate),
                 totalAvgProfit: parseInt(totalAvgProfit),
                 recentRate: parseFloat(recentRate),
-                recentMedianProfit: parseInt(recentMedianProfit), // 중앙값 매핑
+                recentMedianProfit: parseInt(recentMedianProfit),
                 
                 totalValidDays, totalMissing, totalDataFillRate, maxGlobalDays,
                 recentValidDays, recentMissing, recentDataFillRate, maxRecentDays,
                 
                 totalBestProfitHour, totalBestProfitTick: Math.round(totalBestProfitVal * 100),
                 totalBestCountHour, totalBestCountVal,
-                recentBestProfitHour, recentBestProfitTick: Math.round(recentBestProfitVal), // 틱 가공 완료
+                recentBestProfitHour, recentBestProfitTick: Math.round(recentBestProfitVal), 
                 recentBestCountHour, recentBestCountVal,
                 
                 sellHourMetrics,
@@ -2040,7 +2113,6 @@
         Object.values(dataObj.sellHourMetrics).forEach(metric => {
             if (currentSortMode === 'recent') {
                 countData.push(metric.recentWinCount);
-                // 서브 차트 선형 그래프도 단기 분석 시 중앙값을 뿌려주도록 바인딩
                 profitData.push(metric.recentProfits.length > 0 ? getMedian(metric.recentProfits) : 0);
             } else {
                 countData.push(metric.totalWinCount);
@@ -2079,7 +2151,6 @@
         displayData.sort((a, b) => {
             if (a.isLast) return 1;
             if (b.isLast) return -1;
-            // 단기 소팅 시 익절 확률 다음으로 중앙값(recentMedianProfit)을 기준 정렬
             return currentSortMode === 'recent' ? (b.recentRate - a.recentRate || b.recentMedianProfit - a.recentMedianProfit) : (b.totalRate - a.totalRate || b.totalAvgProfit - a.totalAvgProfit);
         });
 
@@ -2122,9 +2193,8 @@
                         </div>`;
 
                 if (currentSortMode === 'recent') {
-                    // 💡 단기 안내 문구 고도화 (평균 최고 차익 -> 차익 중앙값 변환 안내)
                     statsHtml = `
-                        ⏱️ 최근 7회 익절 확률: <span class="rate">${res.recentRate}%</span><br>
+                        ⏱️ 최근 ${targetCount}회 익절 확률: <span class="rate">${res.recentRate}%</span><br>
                         📈 익절 성공시 **차익 중앙값(Median)**: <span class="profit">+${res.recentMedianProfit} 틱</span>`;
                     
                     detailsHtml = `
