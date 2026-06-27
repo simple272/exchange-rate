@@ -30,7 +30,7 @@
             color: #111;
         }
 
-        /* ⚙️ 컨트롤러 스타일 (동적 개수 설정) */
+        /* ⚙️ 컨트롤러 스타일 */
         .config-panel {
             background: #eef2f7;
             border: 1px solid #dce4ec;
@@ -266,7 +266,7 @@
             font-weight: 600;
         }
 
-        /* 데이터 신뢰도 가이드 및 게이지바 */
+        /* 데이터 신뢰도 가이드 */
         .data-reliability {
             background: #f8f9fa;
             border: 1px solid #e9ecef;
@@ -363,7 +363,7 @@
     
     <div class="tabs">
         <button class="tab-button active" onclick="switchTab('chart-tab')">📊 시간별 추이</button>
-        <button class="tab-button" onclick="switchTab('rank-tab')">💰 당일 매수 차익 시뮬</button>
+        <button class="tab-button" onclick="switchTab('rank-tab')">💰 당일 매수 차익 시물</button>
     </div>
 
     <div id="chart-tab" class="tab-content active">
@@ -2241,7 +2241,7 @@
   "2026-06-26 22": 5.87,
   "2026-06-26 23": 5.86
 };
-    let targetCount = 7; // 초기값 설정
+    let targetCount = 7; 
 
     const datesSet = new Set();
     const hoursSet = new Set();
@@ -2257,7 +2257,6 @@
     const labelsDates = Array.from(datesSet).sort();
     const allHours = Array.from(hoursSet).sort();
     
-    // 전역 동적 배열 선언
     let recentNDates = labelsDates.slice(-targetCount);
 
     const baseWidth = document.getElementById('chartBox').clientWidth || 400;
@@ -2305,7 +2304,7 @@
         checkbox.value = hour;
         checkbox.addEventListener('change', updateChartAndComparison);
         label.appendChild(checkbox);
-        label.appendChild(document.createTextNode(hour)); // + '시'
+        label.appendChild(document.createTextNode(hour)); 
         filterGroup.appendChild(label);
     });
 
@@ -2369,7 +2368,6 @@
         return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
     }
 
-    // 🚀 [핵심 추가] 사용자가 화면에서 input 수정 시 호출되는 핸들러 함수
     window.handleTargetCountChange = function() {
         const inputVal = parseInt(document.getElementById('inputTargetCount').value);
         if (isNaN(inputVal) || inputVal < 1) {
@@ -2378,14 +2376,12 @@
         }
         
         targetCount = inputVal;
-        document.getElementById('textTabCount').innerText = targetCount; // 서브탭 텍스트 동적 수정
-        recentNDates = labelsDates.slice(-targetCount); // 타겟 데이터 슬라이싱 업데이트
+        document.getElementById('textTabCount').innerText = targetCount; 
+        recentNDates = labelsDates.slice(-targetCount); 
         
-        // 열려있는 기존 하위 차트들 파괴(초기화)
         Object.values(activeSubCharts).forEach(chart => chart.destroy());
         activeSubCharts = {};
         
-        // 전체 동적 재연산 및 다시 그리기
         updateChartAndComparison();
         runSimulationEngine();
     }
@@ -2470,13 +2466,34 @@
                 sellHourMetrics[h] = { 
                     totalWinCount: 0, totalProfitSum: 0, 
                     recentWinCount: 0, recentProfitSum: 0,
-                    totalProfits: [], recentProfits: [] 
+                    totalProfits: [], recentProfits: [] ,
+                    
+                    // 💡 모든 매도 시간대의 독립된 스트릭 변수화 완료
+                    totalCurrentStreak: 0, totalMaxStreak: 0,
+                    totalCurrentStart: null, totalMaxStart: null, totalMaxEnd: null,
+                    
+                    recentCurrentStreak: 0, recentMaxStreak: 0,
+                    recentCurrentStart: null, recentMaxStart: null, recentMaxEnd: null
                 };
             });
 
             labelsDates.forEach(date => {
                 const buyVal = rawData[`${date} ${buyHour}`];
-                if (buyVal === undefined) return; 
+                if (buyVal === undefined) {
+                    targetSellHours.forEach(sellHour => {
+                        const m = sellHourMetrics[sellHour];
+                        if (m.totalCurrentStreak > m.totalMaxStreak) {
+                            m.totalMaxStreak = m.totalCurrentStreak; m.totalMaxStart = m.totalCurrentStart; m.totalMaxEnd = m.lastValidDate;
+                        }
+                        m.totalCurrentStreak = 0; m.totalCurrentStart = null;
+
+                        if (m.recentCurrentStreak > m.recentMaxStreak) {
+                            m.recentMaxStreak = m.recentCurrentStreak; m.recentMaxStart = m.recentCurrentStart; m.recentMaxEnd = m.lastValidDate;
+                        }
+                        m.recentCurrentStreak = 0; m.recentCurrentStart = null;
+                    });
+                    return; 
+                }
 
                 const availableSellHours = targetSellHours.filter(sh => rawData[`${date} ${sh}`] !== undefined);
                 if (availableSellHours.length === 0) return; 
@@ -2488,21 +2505,64 @@
                 let dayMaxProfit = 0;
                 let hasValidTrade = false;
 
-                availableSellHours.forEach(sellHour => {
+                targetSellHours.forEach(sellHour => {
+                    if (rawData[`${date} ${sellHour}`] === undefined) {
+                        const m = sellHourMetrics[sellHour];
+                        if (m.totalCurrentStreak > m.totalMaxStreak) {
+                            m.totalMaxStreak = m.totalCurrentStreak; m.totalMaxStart = m.totalCurrentStart; m.totalMaxEnd = m.lastValidDate;
+                        }
+                        m.totalCurrentStreak = 0; m.totalCurrentStart = null;
+
+                        if (m.recentCurrentStreak > m.recentMaxStreak) {
+                            m.recentMaxStreak = m.recentCurrentStreak; m.recentMaxStart = m.recentCurrentStart; m.recentMaxEnd = m.lastValidDate;
+                        }
+                        m.recentCurrentStreak = 0; m.recentCurrentStart = null;
+                        return;
+                    }
+
                     const sellVal = rawData[`${date} ${sellHour}`];
                     const profit = sellVal - buyVal;
+                    const m = sellHourMetrics[sellHour];
                     
+                    // 1) 전체 기간 스트릭 연산
                     if (profit > 0) {
-                        sellHourMetrics[sellHour].totalWinCount++;
-                        sellHourMetrics[sellHour].totalProfitSum += profit;
-                        sellHourMetrics[sellHour].totalProfits.push(Math.round(profit * 100));
+                        m.totalWinCount++;
+                        m.totalProfitSum += profit;
+                        m.totalProfits.push(Math.round(profit * 100));
                         
-                        if (isRecent) {
-                            sellHourMetrics[sellHour].recentWinCount++;
-                            sellHourMetrics[sellHour].recentProfitSum += profit;
-                            sellHourMetrics[sellHour].recentProfits.push(Math.round(profit * 100));
+                        if (m.totalCurrentStreak === 0) m.totalCurrentStart = date;
+                        m.totalCurrentStreak++;
+                        m.lastValidDate = date; 
+                    } else {
+                        if (m.totalCurrentStreak > m.totalMaxStreak) {
+                            m.totalMaxStreak = m.totalCurrentStreak; m.totalMaxStart = m.totalCurrentStart; m.totalMaxEnd = m.lastValidDate;
                         }
+                        m.totalCurrentStreak = 0; m.totalCurrentStart = null;
                     }
+
+                    // 2) 최근 N회 기간 내 스트릭 연산
+                    if (isRecent) {
+                        if (profit > 0) {
+                            m.recentWinCount++;
+                            m.recentProfitSum += profit;
+                            m.recentProfits.push(Math.round(profit * 100));
+                            
+                            if (m.recentCurrentStreak === 0) m.recentCurrentStart = date;
+                            m.recentCurrentStreak++;
+                            m.lastValidDate = date;
+                        } else {
+                            if (m.recentCurrentStreak > m.recentMaxStreak) {
+                                m.recentMaxStreak = m.recentCurrentStreak; m.recentMaxStart = m.recentCurrentStart; m.recentMaxEnd = m.lastValidDate;
+                            }
+                            m.recentCurrentStreak = 0; m.recentCurrentStart = null;
+                        }
+                    } else {
+                        if (m.recentCurrentStreak > m.recentMaxStreak) {
+                            m.recentMaxStreak = m.recentCurrentStreak; m.recentMaxStart = m.recentCurrentStart; m.recentMaxEnd = m.lastValidDate;
+                        }
+                        m.recentCurrentStreak = 0; m.recentCurrentStart = null;
+                    }
+
                     if (profit > dayMaxProfit) dayMaxProfit = profit;
                     hasValidTrade = true;
                 });
@@ -2519,12 +2579,24 @@
                 }
             });
 
+            // 잔여 스트릭 최종 마감
+            targetSellHours.forEach(sellHour => {
+                const m = sellHourMetrics[sellHour];
+                if (m.totalCurrentStreak > m.totalMaxStreak) {
+                    m.totalMaxStreak = m.totalCurrentStreak; m.totalMaxStart = m.totalCurrentStart; m.totalMaxEnd = m.lastValidDate;
+                }
+                if (m.recentCurrentStreak > m.recentMaxStreak) {
+                    m.recentMaxStreak = m.recentCurrentStreak; m.recentMaxStart = m.recentCurrentStart; m.recentMaxEnd = m.lastValidDate;
+                }
+            });
+
             const totalRate = totalValidDays > 0 ? ((totalWins / totalValidDays) * 100).toFixed(1) : 0;
             const totalAvgProfit = totalWins > 0 ? (totalMaxProfitSum / totalWins * 100).toFixed(0) : 0;
             
             const recentRate = recentValidDays > 0 ? ((recentWins / recentValidDays) * 100).toFixed(1) : 0;
             const recentMedianProfit = recentDayMaxProfits.length > 0 ? getMedian(recentDayMaxProfits).toFixed(0) : 0;
 
+            // 장기 정렬지표 추출
             let totalBestProfitHour = '없음', totalBestProfitVal = -1;
             let totalBestCountHour = '없음', totalBestCountVal = -1;
             Object.entries(sellHourMetrics).forEach(([h, m]) => {
@@ -2533,6 +2605,7 @@
                 if (m.totalWinCount > totalBestCountVal) { totalBestCountVal = m.totalWinCount; totalBestCountHour = h; }
             });
 
+            // 단기 정렬지표 추출
             let recentBestProfitHour = '없음', recentBestProfitVal = -1;
             let recentBestCountHour = '없음', recentBestCountVal = -1;
             Object.entries(sellHourMetrics).forEach(([h, m]) => {
@@ -2588,6 +2661,13 @@
         const labels = Object.keys(dataObj.sellHourMetrics).map(h => h + '시');
         const countData = [];
         const profitData = [];
+        
+        // 💡 하위 툴팁 연동용 연속 데이터 매핑 추출
+        const streakData = Object.values(dataObj.sellHourMetrics).map(metric => {
+            return currentSortMode === 'recent' 
+                ? { streak: metric.recentMaxStreak, start: metric.recentMaxStart, end: metric.recentMaxEnd }
+                : { streak: metric.totalMaxStreak, start: metric.totalMaxStart, end: metric.totalMaxEnd };
+        });
 
         Object.values(dataObj.sellHourMetrics).forEach(metric => {
             if (currentSortMode === 'recent') {
@@ -2617,7 +2697,23 @@
                     yCount: { type: 'linear', position: 'left', title: { display: true, text: '횟수', font: { size: 9 } }, ticks: { font: { size: 9 }, beginAtZero: true, stepSize: 1 } },
                     yProfit: { type: 'linear', position: 'right', title: { display: true, text: '틱(Tick)', font: { size: 9 } }, grid: { drawOnChartArea: false }, ticks: { font: { size: 9 }, beginAtZero: true } }
                 },
-                plugins: { legend: { position: 'top', labels: { boxWidth: 8, font: { size: 10 }, padding: 4 } } }
+                plugins: { 
+                    legend: { position: 'top', labels: { boxWidth: 8, font: { size: 10 }, padding: 4 } },
+                    // 💡 차트 막대그래프 마우스 오버 시 모든 매도시간대별 연속 성공 정보를 팝업으로 표출
+                    tooltip: {
+                        callbacks: {
+                            footer: function(tooltipItems) {
+                                const index = tooltipItems[0].dataIndex;
+                                const item = streakData[index];
+                                if (item && item.streak > 0) {
+                                    return `🔥 최대 연속 성공: ${item.streak}일 연속
+   (${item.start} ~ ${item.end})`;
+                                }
+                                return ' 연속 성공 기록 없음';
+                            }
+                        }
+                    }
+                }
             }
         });
     }
@@ -2676,13 +2772,20 @@
                         ⏱️ 최근 ${targetCount}회 익절 확률: <span class="rate">${res.recentRate}%</span><br>
                         📈 익절 성공시 **차익 중앙값(Median)**: <span class="profit">+${res.recentMedianProfit} 틱</span>`;
                     
+                    // 💡 [최고수익], [최다익절] 타겟 오브젝트 추출
+                    const pMetric = res.sellHourMetrics[res.recentBestProfitHour] || {};
+                    const cMetric = res.sellHourMetrics[res.recentBestCountHour] || {};
+                    
+                    const pStreakText = pMetric.recentMaxStreak > 0 ? ` (최대 ${pMetric.recentMaxStreak}일 연속: ${pMetric.recentMaxStart}~${pMetric.recentMaxEnd})` : '';
+                    const cStreakText = cMetric.recentMaxStreak > 0 ? ` (최대 ${cMetric.recentMaxStreak}일 연속: ${cMetric.recentMaxStart}~${cMetric.recentMaxEnd})` : '';
+
                     detailsHtml = `
                         <div class="rank-details-group">
                             <div class="rank-details profit-focus">
-                                🎯 <strong>[최고수익] 주로 ${res.recentBestProfitHour}시 매도</strong>할 때 왜곡 없는 기대 차익 최대 (중앙값 +${res.recentBestProfitTick}틱)
+                                🎯 <strong>[최고수익] 주로 ${res.recentBestProfitHour}시 매도</strong>할 때 기대 차익 최대 (+${res.recentBestProfitTick}틱)${pStreakText}
                             </div>
                             <div class="rank-details count-focus">
-                                🛡️ <strong>[최다익절] 주로 ${res.recentBestCountHour}시 매도</strong>할 때 익절 확률 최고 (${res.recentBestCountVal}회 성공)
+                                🛡️ <strong>[최다익절] 주로 ${res.recentBestCountHour}시 매도</strong>할 때 확률 최고 (${res.recentBestCountVal}회 성공)${cStreakText}
                             </div>
                         </div>`;
                 } else {
@@ -2690,13 +2793,19 @@
                         📊 전체 기간 익절 확률: <span class="rate" style="color:#34C759;">${res.totalRate}%</span><br>
                         📈 익절 성공시 평균 최고 차익: <span class="profit">+${res.totalAvgProfit} 틱</span>`;
                     
+                    const pMetric = res.sellHourMetrics[res.totalBestProfitHour] || {};
+                    const cMetric = res.sellHourMetrics[res.totalBestCountHour] || {};
+                    
+                    const pStreakText = pMetric.totalMaxStreak > 0 ? ` (최대 ${pMetric.totalMaxStreak}일 연속: ${pMetric.totalMaxStart}~${pMetric.totalMaxEnd})` : '';
+                    const cStreakText = cMetric.totalMaxStreak > 0 ? ` (최대 ${cMetric.totalMaxStreak}일 연속: ${cMetric.totalMaxStart}~${cMetric.totalMaxEnd})` : '';
+
                     detailsHtml = `
                         <div class="rank-details-group">
                             <div class="rank-details profit-focus">
-                                🎯 <strong>[최고수익] 주로 ${res.totalBestProfitHour}시 매도</strong>할 때 최대 이익 (평균 +${res.totalBestProfitTick}틱)
+                                🎯 <strong>[최고수익] 주로 ${res.totalBestProfitHour}시 매도</strong>할 때 최대 이익 (평균 +${res.totalBestProfitTick}틱)${pStreakText}
                             </div>
                             <div class="rank-details count-focus">
-                                🛡️ <strong>[최다익절] 주로 ${res.totalBestCountHour}시 매도</strong>할 때 익절 확률 최고 (${res.totalBestCountVal}회 성공)
+                                🛡️ <strong>[최다익절] 주로 ${res.totalBestCountHour}시 매도</strong>할 때 확률 최고 (${res.totalBestCountVal}회 성공)${cStreakText}
                             </div>
                         </div>`;
                 }
