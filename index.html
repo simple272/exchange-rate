@@ -2468,7 +2468,6 @@
                     recentWinCount: 0, recentProfitSum: 0,
                     totalProfits: [], recentProfits: [] ,
                     
-                    // 💡 모든 매도 시간대의 독립된 스트릭 변수화 완료
                     totalCurrentStreak: 0, totalMaxStreak: 0,
                     totalCurrentStart: null, totalMaxStart: null, totalMaxEnd: null,
                     
@@ -2662,7 +2661,6 @@
         const countData = [];
         const profitData = [];
         
-        // 💡 하위 툴팁 연동용 연속 데이터 매핑 추출
         const streakData = Object.values(dataObj.sellHourMetrics).map(metric => {
             return currentSortMode === 'recent' 
                 ? { streak: metric.recentMaxStreak, start: metric.recentMaxStart, end: metric.recentMaxEnd }
@@ -2699,7 +2697,6 @@
                 },
                 plugins: { 
                     legend: { position: 'top', labels: { boxWidth: 8, font: { size: 10 }, padding: 4 } },
-                    // 💡 차트 막대그래프 마우스 오버 시 모든 매도시간대별 연속 성공 정보를 팝업으로 표출
                     tooltip: {
                         callbacks: {
                             footer: function(tooltipItems) {
@@ -2723,10 +2720,39 @@
         rankListContainer.innerHTML = '';
 
         const displayData = [...calculatedSimulations];
+        
+        // ⚙️ [대안 1] 정렬 정밀 수정부: 확률 ➔ 성공 횟수 ➔ 연속 최대 성공 일수
         displayData.sort((a, b) => {
             if (a.isLast) return 1;
             if (b.isLast) return -1;
-            return currentSortMode === 'recent' ? (b.recentRate - a.recentRate || b.recentMedianProfit - a.recentMedianProfit) : (b.totalRate - a.totalRate || b.totalAvgProfit - a.totalAvgProfit);
+
+            if (currentSortMode === 'recent') {
+                // 1순위: 익절 확률 내림차순
+                if (b.recentRate !== a.recentRate) return b.recentRate - a.recentRate;
+                
+                // 2순위: 성공 횟수 내림차순 (가장 성공 횟수가 높은 매도 시간대의 횟수 기준)
+                const aCount = a.recentBestCountVal || 0;
+                const bCount = b.recentBestCountVal || 0;
+                if (bCount !== aCount) return bCount - aCount;
+                
+                // 3순위: 최대 연속 성공 일수 내림차순
+                const aStreak = a.sellHourMetrics[a.recentBestCountHour]?.recentMaxStreak || 0;
+                const bStreak = b.sellHourMetrics[b.recentBestCountHour]?.recentMaxStreak || 0;
+                return bStreak - aStreak;
+            } else {
+                // 1순위: 익절 확률 내림차순
+                if (b.totalRate !== a.totalRate) return b.totalRate - a.totalRate;
+                
+                // 2순위: 성공 횟수 내림차순
+                const aCount = a.totalBestCountVal || 0;
+                const bCount = b.totalBestCountVal || 0;
+                if (bCount !== aCount) return bCount - aCount;
+                
+                // 3순위: 최대 연속 성공 일수 내림차순
+                const aStreak = a.sellHourMetrics[a.totalBestCountHour]?.totalMaxStreak || 0;
+                const bStreak = b.sellHourMetrics[b.totalBestCountHour]?.totalMaxStreak || 0;
+                return bStreak - aStreak;
+            }
         });
 
         displayData.forEach((res, idx) => {
@@ -2772,7 +2798,6 @@
                         ⏱️ 최근 ${targetCount}회 익절 확률: <span class="rate">${res.recentRate}%</span><br>
                         📈 익절 성공시 **차익 중앙값(Median)**: <span class="profit">+${res.recentMedianProfit} 틱</span>`;
                     
-                    // 💡 [최고수익], [최다익절] 타겟 오브젝트 추출
                     const pMetric = res.sellHourMetrics[res.recentBestProfitHour] || {};
                     const cMetric = res.sellHourMetrics[res.recentBestCountHour] || {};
                     
