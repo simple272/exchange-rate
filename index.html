@@ -87,10 +87,10 @@
         }
         .tab-button {
             flex: 1;
-            padding: 10px;
+            padding: 10px 4px;
             background: none;
             border: none;
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 600;
             color: #868e96;
             cursor: pointer;
@@ -344,6 +344,79 @@
             margin-top: -2px;
             font-weight: 600;
         }
+
+        /* 📅 요일별 테이블 전용 스타일 */
+        .table-responsive-wrapper {
+            width: 100%;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            background: #fff;
+        }
+        .matrix-table {
+            width: 100%;
+            min-width: 600px; /* 가로 스크롤 보장 */
+            border-collapse: collapse;
+            font-size: 12px;
+            text-align: center;
+        }
+        .matrix-table th, .matrix-table td {
+            padding: 10px 8px;
+            border-bottom: 1px solid #eef2f7;
+            border-right: 1px solid #eef2f7;
+        }
+        .matrix-table th {
+            background-color: #f1f3f5;
+            color: #495057;
+            font-weight: bold;
+            position: sticky;
+            top: 0;
+        }
+        .matrix-table td:first-child, .matrix-table th:first-child {
+            position: sticky;
+            left: 0;
+            background: #f8f9fa;
+            font-weight: bold;
+            border-right: 2px solid #dee2e6;
+            z-index: 2;
+        }
+        .matrix-table th:first-child {
+            z-index: 3;
+        }
+        .matrix-table td.empty-cell {
+            color: #ced4da;
+            background-color: #fafbfc;
+        }
+        .weekday-badge {
+            font-size: 10px;
+            font-weight: normal;
+            color: #868e96;
+            display: block;
+            margin-top: 2px;
+        }
+
+        /* 📈 변동성(상승/하락/유지) 테이블 UI 전용 스타일 */
+        .td-status-up {
+            background-color: #fff5f5 !important;
+            color: #e63946 !important;
+            font-weight: 500;
+        }
+        .td-status-down {
+            background-color: #f1f7fe !important;
+            color: #007AFF !important;
+            font-weight: 500;
+        }
+        .td-status-same {
+            background-color: #ffffff !important;
+            color: #868e96 !important;
+        }
+        .status-tag {
+            font-size: 9px;
+            font-weight: bold;
+            margin-left: 2px;
+            display: inline-block;
+        }
     </style>
 </head>
 <body>
@@ -363,7 +436,8 @@
     
     <div class="tabs">
         <button class="tab-button active" onclick="switchTab('chart-tab')">📊 시간별 추이</button>
-        <button class="tab-button" onclick="switchTab('rank-tab')">💰 당일 매수 차익 시물</button>
+        <button class="tab-button" onclick="switchTab('rank-tab')">💰 차익 시뮬</button>
+        <button class="tab-button" onclick="switchTab('weekday-tab')">📅 요일별 조회</button>
     </div>
 
     <div id="chart-tab" class="tab-content active">
@@ -392,6 +466,25 @@
         <div class="chart-instruction">💡 카드를 누르면 상세 분석 가이드와 시뮬레이션 그래프가 펼쳐집니다.</div>
         <div style="margin-bottom: 10px;"></div>
         <div id="rankList" class="rank-list"></div>
+    </div>
+
+    <div id="weekday-tab" class="tab-content">
+        <div class="filter-container">
+            <div class="filter-title">📅 조회할 요일 선택 (다중 선택 가능)</div>
+            <div id="weekdayFilterGroup" class="checkbox-group">
+                </div>
+        </div>
+        <div class="table-responsive-wrapper">
+            <table class="matrix-table" id="weekdayMatrixTable">
+                <thead>
+                    <tr id="tableHeaderRow">
+                        <th>시간</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBodyRow">
+                    </tbody>
+            </table>
+        </div>
     </div>
 </div>
 
@@ -2245,12 +2338,14 @@
 
     const datesSet = new Set();
     const hoursSet = new Set();
+    const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
     
     Object.keys(rawData).forEach(key => {
-        const [date, hour] = key.split(' ');
-        if(date && hour) {
+        const parts = key.split(' ');
+        if(parts.length === 2) {
+            const [date, hour] = parts;
             datesSet.add(date);
-            hoursSet.add(hour);
+            hoursSet.add(hour); 
         }
     });
 
@@ -2258,6 +2353,7 @@
     const allHours = Array.from(hoursSet).sort();
     
     let recentNDates = labelsDates.slice(-targetCount);
+    let selectedWeekdays = [];
 
     const baseWidth = document.getElementById('chartBox').clientWidth || 400;
     const dynamicWidth = Math.max(labelsDates.length * 15, baseWidth);
@@ -2282,7 +2378,7 @@
         });
         const backgroundColor = color.startsWith('hsl') ? color.replace('50%)', '50%, 0.1)') : color + '15';
         return {
-            label: hour + '시',
+            label: parseInt(hour, 10) + '시',
             data: dataPoints,
             borderColor: color,
             backgroundColor: backgroundColor,
@@ -2295,6 +2391,7 @@
         };
     });
 
+    // 탭 1 시간 필터 렌더링
     const filterGroup = document.getElementById('filterGroup');
     allHours.forEach(hour => {
         const label = document.createElement('label');
@@ -2304,8 +2401,28 @@
         checkbox.value = hour;
         checkbox.addEventListener('change', updateChartAndComparison);
         label.appendChild(checkbox);
-        label.appendChild(document.createTextNode(hour)); 
+        label.appendChild(document.createTextNode(parseInt(hour, 10) + '시')); 
         filterGroup.appendChild(label);
+    });
+
+    // 탭 3 요일 필터 생성
+    const weekdayFilterGroup = document.getElementById('weekdayFilterGroup');
+    dayNames.forEach(day => {
+        const label = document.createElement('label');
+        label.className = 'checkbox-label';
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.value = day;
+        if (selectedWeekdays.includes(day)) checkbox.checked = true;
+        
+        checkbox.addEventListener('change', () => {
+            selectedWeekdays = Array.from(document.querySelectorAll('#weekdayFilterGroup input:checked')).map(cb => cb.value);
+            renderWeekdayTable();
+        });
+        
+        label.appendChild(checkbox);
+        label.appendChild(document.createTextNode(day + '요일'));
+        weekdayFilterGroup.appendChild(label);
     });
 
     const ctx = document.getElementById('exchangeChart').getContext('2d');
@@ -2386,8 +2503,10 @@
         runSimulationEngine();
     }
 
+    // 초기 엔진 구동 및 렌더링
     updateChartAndComparison();
     runSimulationEngine(); 
+    renderWeekdayTable();
 
     const chartBox = document.getElementById('chartBox');
     if (chartBox) {
@@ -2399,6 +2518,10 @@
         document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
         event.currentTarget.classList.add('active');
         document.getElementById(tabId).classList.add('active');
+        
+        if(tabId === 'weekday-tab') {
+            renderWeekdayTable();
+        }
     }
 
     window.switchSubTab = function(mode) {
@@ -2433,14 +2556,88 @@
                 }
             });
 
-            let totalText = `<strong>${hourA}시(${totalAWin}회)</strong> vs <strong>${hourB}시(${totalBWin}회)</strong>, ` + (totalAWin > totalBWin ? `<strong>${hourA}시</strong> 우세, 동일(${totalDraw})` : totalBWin > totalAWin ? `<strong>${hourB}시</strong> 우세, 동일(${totalDraw})` : `무승부, 동일(${totalDraw})`);
-            let recentText = `<strong>${hourA}시(${recentAWin}회)</strong> vs <strong>${hourB}시(${recentBWin}회)</strong>, ` + (recentAWin > recentBWin ? `<strong>${hourA}시</strong> 우세, 동일(${recentDraw})` : recentBWin > recentAWin ? `<strong>${hourB}시</strong> 우세, 동일(${recentDraw})` : `무승부, 동일(${recentDraw})`);
+            let totalText = `<strong>${parseInt(hourA, 10)}시(${totalAWin}회)</strong> vs <strong>${parseInt(hourB, 10)}시(${totalBWin}회)</strong>, ` + (totalAWin > totalBWin ? `<strong>${parseInt(hourA, 10)}시</strong> 우세, 동일(${totalDraw})` : totalBWin > totalAWin ? `<strong>${parseInt(hourB, 10)}시</strong> 우세, 동일(${totalDraw})` : `무승부, 동일(${totalDraw})`);
+            let recentText = `<strong>${parseInt(hourA, 10)}시(${recentAWin}회)</strong> vs <strong>${parseInt(hourB, 10)}시(${recentBWin}회)</strong>, ` + (recentAWin > recentBWin ? `<strong>${parseInt(hourA, 10)}시</strong> 우세, 동일(${recentDraw})` : recentBWin > recentAWin ? `<strong>${parseInt(hourB, 10)}시</strong> 우세, 동일(${recentDraw})` : `무승부, 동일(${recentDraw})`);
             compBox.innerHTML = `📊 <strong>전체 기간:</strong> ${totalText}<br>⏱️ <strong>최근 ${targetCount}회:</strong> ${recentText}`;
             compBox.classList.add('active');
         } else {
             compBox.innerHTML = `📊 <strong>전체 기간:</strong> <br>⏱️ <strong>최근 ${targetCount}회:</strong> `;
             compBox.classList.add('active');
         }
+    }
+
+    // 📅 요일별 매트릭스 테이블 생성 함수 (이전 시간 대비 변동 상태 UI 최적화)
+    function renderWeekdayTable() {
+        const headerRow = document.getElementById('tableHeaderRow');
+        const bodyRow = document.getElementById('tableBodyRow');
+        
+        headerRow.innerHTML = '<th>시간</th>';
+        bodyRow.innerHTML = '';
+
+        const filteredDates = labelsDates.filter(dateStr => {
+            const dayNum = new Date(dateStr).getDay();
+            const dayName = dayNames[dayNum];
+            return selectedWeekdays.includes(dayName);
+        });
+
+        if (filteredDates.length === 0) {
+            bodyRow.innerHTML = `<tr><td colspan="100%" style="padding: 30px; color: #999;">선택한 요일에 해당하는 데이터가 없습니다.</td></tr>`;
+            return;
+        }
+
+        filteredDates.forEach(dateStr => {
+            const dayNum = new Date(dateStr).getDay();
+            const th = document.createElement('th');
+            const displayDate = dateStr.substring(5); 
+            th.innerHTML = `${displayDate}<span class="weekday-badge">(${dayNames[dayNum]})</span>`;
+            headerRow.appendChild(th);
+        });
+
+        // 세로축 시간 흐름 관점 변동성 연산 및 렌더링
+        allHours.forEach((hour, hIdx) => {
+            const tr = document.createElement('tr');
+            
+            const tdHour = document.createElement('td');
+            tdHour.innerText = parseInt(hour, 10) + '시';
+            tr.appendChild(tdHour);
+
+            filteredDates.forEach(dateStr => {
+                const tdData = document.createElement('td');
+                const key = dateStr + " " + hour; 
+                
+                if (rawData[key] !== undefined) {
+                    const currentVal = rawData[key];
+                    tdData.innerText = currentVal;
+
+                    // 💡 상단 행(직전 시간대)이 존재하는지 확인하여 변동률 추적
+                    if (hIdx > 0) {
+                        const prevHour = allHours[hIdx - 1];
+                        const prevKey = dateStr + " " + prevHour;
+                        const prevVal = rawData[prevKey];
+
+                        if (prevVal !== undefined) {
+                            const diff = currentVal - prevVal;
+                            if (diff > 0) {
+                                tdData.className = 'td-status-up';
+                                tdData.innerHTML = `${currentVal}<span class="status-tag">▲</span>`;
+                            } else if (diff < 0) {
+                                tdData.className = 'td-status-down';
+                                tdData.innerHTML = `${currentVal}<span class="status-tag">▼</span>`;
+                            } else {
+                                tdData.className = 'td-status-same';
+                                tdData.innerHTML = `${currentVal}<span class="status-tag" style="color:#aaa;">-</span>`;
+                            }
+                        }
+                    }
+                } else {
+                    tdData.innerText = '-';
+                    tdData.className = 'empty-cell';
+                }
+                tr.appendChild(tdData);
+            });
+
+            bodyRow.appendChild(tr);
+        });
     }
 
     function runSimulationEngine() {
@@ -2501,9 +2698,6 @@
                 totalValidDays++;
                 if (isRecent) recentValidDays++;
 
-                let dayMaxProfit = 0;
-                let hasValidTrade = false;
-
                 targetSellHours.forEach(sellHour => {
                     if (rawData[`${date} ${sellHour}`] === undefined) {
                         const m = sellHourMetrics[sellHour];
@@ -2523,7 +2717,6 @@
                     const profit = sellVal - buyVal;
                     const m = sellHourMetrics[sellHour];
                     
-                    // 1) 전체 기간 스트릭 연산
                     if (profit > 0) {
                         m.totalWinCount++;
                         m.totalProfitSum += profit;
@@ -2539,7 +2732,6 @@
                         m.totalCurrentStreak = 0; m.totalCurrentStart = null;
                     }
 
-                    // 2) 최근 N회 기간 내 스트릭 연산
                     if (isRecent) {
                         if (profit > 0) {
                             m.recentWinCount++;
@@ -2561,9 +2753,16 @@
                         }
                         m.recentCurrentStreak = 0; m.recentCurrentStart = null;
                     }
+                });
 
-                    if (profit > dayMaxProfit) dayMaxProfit = profit;
-                    hasValidTrade = true;
+                let dayMaxProfit = 0;
+                let hasValidTrade = false;
+                targetSellHours.forEach(sellHour => {
+                    if (rawData[`${date} ${sellHour}`] !== undefined) {
+                        const profit = rawData[`${date} ${sellHour}`] - buyVal;
+                        if (profit > dayMaxProfit) dayMaxProfit = profit;
+                        hasValidTrade = true;
+                    }
                 });
 
                 if (hasValidTrade && dayMaxProfit > 0) {
@@ -2578,7 +2777,6 @@
                 }
             });
 
-            // 잔여 스트릭 최종 마감
             targetSellHours.forEach(sellHour => {
                 const m = sellHourMetrics[sellHour];
                 if (m.totalCurrentStreak > m.totalMaxStreak) {
@@ -2595,7 +2793,6 @@
             const recentRate = recentValidDays > 0 ? ((recentWins / recentValidDays) * 100).toFixed(1) : 0;
             const recentMedianProfit = recentDayMaxProfits.length > 0 ? getMedian(recentDayMaxProfits).toFixed(0) : 0;
 
-            // 장기 정렬지표 추출
             let totalBestProfitHour = '없음', totalBestProfitVal = -1;
             let totalBestCountHour = '없음', totalBestCountVal = -1;
             Object.entries(sellHourMetrics).forEach(([h, m]) => {
@@ -2604,7 +2801,6 @@
                 if (m.totalWinCount > totalBestCountVal) { totalBestCountVal = m.totalWinCount; totalBestCountHour = h; }
             });
 
-            // 단기 정렬지표 추출
             let recentBestProfitHour = '없음', recentBestProfitVal = -1;
             let recentBestCountHour = '없음', recentBestCountVal = -1;
             Object.entries(sellHourMetrics).forEach(([h, m]) => {
@@ -2657,7 +2853,7 @@
         const dataObj = calculatedSimulations.find(item => item.buyHour === buyHour);
         if (!dataObj || !dataObj.sellHourMetrics) return;
 
-        const labels = Object.keys(dataObj.sellHourMetrics).map(h => h + '시');
+        const labels = Object.keys(dataObj.sellHourMetrics).map(h => parseInt(h, 10) + '시');
         const countData = [];
         const profitData = [];
         
@@ -2721,34 +2917,23 @@
 
         const displayData = [...calculatedSimulations];
         
-        // ⚙️ [대안 1] 정렬 정밀 수정부: 확률 ➔ 성공 횟수 ➔ 연속 최대 성공 일수
         displayData.sort((a, b) => {
             if (a.isLast) return 1;
             if (b.isLast) return -1;
 
             if (currentSortMode === 'recent') {
-                // 1순위: 익절 확률 내림차순
                 if (b.recentRate !== a.recentRate) return b.recentRate - a.recentRate;
-                
-                // 2순위: 성공 횟수 내림차순 (가장 성공 횟수가 높은 매도 시간대의 횟수 기준)
                 const aCount = a.recentBestCountVal || 0;
                 const bCount = b.recentBestCountVal || 0;
                 if (bCount !== aCount) return bCount - aCount;
-                
-                // 3순위: 최대 연속 성공 일수 내림차순
                 const aStreak = a.sellHourMetrics[a.recentBestCountHour]?.recentMaxStreak || 0;
                 const bStreak = b.sellHourMetrics[b.recentBestCountHour]?.recentMaxStreak || 0;
                 return bStreak - aStreak;
             } else {
-                // 1순위: 익절 확률 내림차순
                 if (b.totalRate !== a.totalRate) return b.totalRate - a.totalRate;
-                
-                // 2순위: 성공 횟수 내림차순
                 const aCount = a.totalBestCountVal || 0;
                 const bCount = b.totalBestCountVal || 0;
                 if (bCount !== aCount) return bCount - aCount;
-                
-                // 3순위: 최대 연속 성공 일수 내림차순
                 const aStreak = a.sellHourMetrics[a.totalBestCountHour]?.totalMaxStreak || 0;
                 const bStreak = b.sellHourMetrics[b.totalBestCountHour]?.totalMaxStreak || 0;
                 return bStreak - aStreak;
@@ -2763,7 +2948,7 @@
                 card.style.cursor = 'default';
                 card.innerHTML = `
                     <div class="rank-header">
-                        <span class="rank-time" style="color: #868e96;">📥 ${res.buyHour}시 매수</span>
+                        <span class="rank-time" style="color: #868e96;">📥 ${parseInt(res.buyHour, 10)}시 매수</span>
                         <span class="rank-badge" style="background:#e9ecef; color:#868e96;">제외</span>
                     </div>
                     <div class="rank-stats" style="color: #868e96;">당일 이 시간 이후에 비교 가능한 데이터가 없습니다.</div>`;
@@ -2807,10 +2992,10 @@
                     detailsHtml = `
                         <div class="rank-details-group">
                             <div class="rank-details profit-focus">
-                                🎯 <strong>[최고수익] 주로 ${res.recentBestProfitHour}시 매도</strong>할 때 기대 차익 최대 (+${res.recentBestProfitTick}틱)${pStreakText}
+                                🎯 <strong>[최고수익] 주로 ${parseInt(res.recentBestProfitHour, 10)}시 매도</strong>할 때 기대 차익 최대 (+${res.recentBestProfitTick}틱)${pStreakText}
                             </div>
                             <div class="rank-details count-focus">
-                                🛡️ <strong>[최다익절] 주로 ${res.recentBestCountHour}시 매도</strong>할 때 확률 최고 (${res.recentBestCountVal}회 성공)${cStreakText}
+                                🛡️ <strong>[최다익절] 주로 ${parseInt(res.recentBestCountHour, 10)}시 매도</strong>할 때 확률 최고 (${res.recentBestCountVal}회 성공)${cStreakText}
                             </div>
                         </div>`;
                 } else {
@@ -2827,17 +3012,17 @@
                     detailsHtml = `
                         <div class="rank-details-group">
                             <div class="rank-details profit-focus">
-                                🎯 <strong>[최고수익] 주로 ${res.totalBestProfitHour}시 매도</strong>할 때 최대 이익 (평균 +${res.totalBestProfitTick}틱)${pStreakText}
+                                🎯 <strong>[최고수익] 주로 ${parseInt(res.totalBestProfitHour, 10)}시 매도</strong>할 때 최대 이익 (평균 +${res.totalBestProfitTick}틱)${pStreakText}
                             </div>
                             <div class="rank-details count-focus">
-                                🛡️ <strong>[최다익절] 주로 ${res.totalBestCountHour}시 매도</strong>할 때 확률 최고 (${res.totalBestCountVal}회 성공)${cStreakText}
+                                🛡️ <strong>[최다익절] 주로 ${parseInt(res.totalBestCountHour, 10)}시 매도</strong>할 때 확률 최고 (${res.totalBestCountVal}회 성공)${cStreakText}
                             </div>
                         </div>`;
                 }
 
                 card.innerHTML = `
                     <div class="rank-header">
-                        <span class="rank-time">📥 <strong>${res.buyHour}시</strong> 매수 (${currentSortMode === 'recent' ? '단기' : '장기'})</span>
+                        <span class="rank-time">📥 <strong>${parseInt(res.buyHour, 10)}시</strong> 매수 (${currentSortMode === 'recent' ? '단기' : '장기'})</span>
                         <span class="rank-badge" style="${currentSortMode === 'total' ? 'background:#34C759; color:#fff;' : ''}">${idx + 1}위</span>
                     </div>
                     <div class="rank-stats">${statsHtml}</div>
