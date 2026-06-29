@@ -346,48 +346,38 @@
         }
 
         /* 📅 요일별 테이블 전용 스타일 */
-        .table-responsive-wrapper {
-            width: 100%;
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
-            border: 1px solid #dee2e6;
-            border-radius: 8px;
-            background: #fff;
-        }
-        .matrix-table {
-            width: 100%;
-            min-width: 600px; /* 가로 스크롤 보장 */
-            border-collapse: collapse;
-            font-size: 12px;
-            text-align: center;
-        }
-        .matrix-table th, .matrix-table td {
-            padding: 10px 8px;
-            border-bottom: 1px solid #eef2f7;
-            border-right: 1px solid #eef2f7;
-        }
-        .matrix-table th {
-            background-color: #f1f3f5;
-            color: #495057;
-            font-weight: bold;
-            position: sticky;
-            top: 0;
-        }
-        .matrix-table td:first-child, .matrix-table th:first-child {
-            position: sticky;
-            left: 0;
-            background: #f8f9fa;
-            font-weight: bold;
-            border-right: 2px solid #dee2e6;
-            z-index: 2;
-        }
-        .matrix-table th:first-child {
-            z-index: 3;
-        }
-        .matrix-table td.empty-cell {
-            color: #ced4da;
-            background-color: #fafbfc;
-        }
+.table-responsive-wrapper {
+    width: 100%;
+    overflow-x: auto; /* 가로 스크롤 활성화 */
+    -webkit-overflow-scrolling: touch;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    background: #fff;
+}
+.matrix-table {
+    width: max-content; /* 🌟 중요: 콘텐츠 너비에 맞춰 테이블이 자연스럽게 늘어나도록 설정 */
+    border-collapse: collapse;
+    font-size: 12px; /* 글자 크기 고정 */
+    text-align: center;
+}
+.matrix-table th, .matrix-table td {
+    padding: 10px 12px; /* 셀 내부 여백 */
+    border-bottom: 1px solid #eef2f7;
+    border-right: 1px solid #eef2f7;
+    white-space: nowrap; /* 🌟 중요: 셀 안의 글자가 절대 줄바꿈(개행)되지 않도록 방지 */
+    min-width: 75px; /* 🌟 중요: 각 열의 최소 너비를 확보하여 셀 간격 넓힘 */
+    box-sizing: border-box;
+}
+.matrix-table td:first-child, .matrix-table th:first-child {
+    position: sticky;
+    left: 0;
+    background: #f8f9fa;
+    font-weight: bold;
+    border-right: 2px solid #dee2e6;
+    z-index: 2;
+    min-width: 55px; /* 시간 열은 조금 더 좁게 설정 가능 */
+}
+
         .weekday-badge {
             font-size: 10px;
             font-weight: normal;
