@@ -418,7 +418,7 @@
         <div class="config-title">⚙️ 단기 분석 설정</div>
         <div class="config-input-wrapper">
             <span>최근</span>
-            <input type="number" id="inputTargetCount" class="config-input" value="7" min="1" max="100">
+            <input type="number" id="inputTargetCount" class="config-input" value="10" min="1" max="100">
             <span>회 비교</span>
             <button class="config-btn" onclick="handleTargetCountChange()">적용</button>
         </div>
@@ -449,7 +449,7 @@
 
     <div id="rank-tab" class="tab-content">
         <div class="sub-tabs">
-            <button id="subTabRecent" class="sub-tab-button active" onclick="switchSubTab('recent')">⏱️ 최근 <span id="textTabCount">7</span>회 분석 기준 정렬</button>
+            <button id="subTabRecent" class="sub-tab-button active" onclick="switchSubTab('recent')">⏱️ 최근 <span id="textTabCount">10</span>회 분석 기준 정렬</button>
             <button id="subTabTotal" class="sub-tab-button" onclick="switchSubTab('total')">📊 전체 기간 통계 기준 정렬</button>
         </div>
 
@@ -2346,7 +2346,7 @@
   "2026-06-29 22": 5.9,
   "2026-06-29 23": 5.9
 };
-    let targetCount = 7; 
+    let targetCount = 10; 
 
     const datesSet = new Set();
     const hoursSet = new Set();
@@ -2590,7 +2590,7 @@
             const dayNum = new Date(dateStr).getDay();
             const dayName = dayNames[dayNum];
             return selectedWeekdays.includes(dayName);
-        });
+        }).sort().reverse();
 
         if (filteredDates.length === 0) {
             bodyRow.innerHTML = `<tr><td colspan="100%" style="padding: 30px; color: #999;">선택한 요일에 해당하는 데이터가 없습니다.</td></tr>`;
