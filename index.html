@@ -6883,7 +6883,9 @@ function renderRankList() {
 📈 익절 성공시 평균 최고 차익: <span class="profit">+${res.totalAvgProfit} 틱</span>`;
         const pMetric = res.sellHourMetrics[res.totalBestProfitHour] || {};
         const cMetric = res.sellHourMetrics[res.totalBestCountHour] || {};
-        const pStreakText = pMetric.totalMaxStreak > 0 ? ` (최대 ${totalMaxStreak}일 연속: ${pMetric.totalMaxStart}~${pMetric.totalMaxEnd})` : '';
+        
+        // 🛠️ 오류 수정: totalBestProfitHour/CountHour에 맞는 연속 기록(pMetric, cMetric)을 사용하도록 매핑 변경
+        const pStreakText = pMetric.totalMaxStreak > 0 ? ` (최대 ${pMetric.totalMaxStreak}일 연속: ${pMetric.totalMaxStart}~${pMetric.totalMaxEnd})` : '';
         const cStreakText = cMetric.totalMaxStreak > 0 ? ` (최대 ${cMetric.totalMaxStreak}일 연속: ${cMetric.totalMaxStart}~${cMetric.totalMaxEnd})` : '';
 
         detailsHtml = `
