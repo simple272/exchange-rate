@@ -1,0 +1,4 @@
+exclude:
+  - create_site.js
+  - generate_data.js
+  - data
