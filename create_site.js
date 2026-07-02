@@ -640,7 +640,7 @@ dayNames.forEach(day => {
     renderWeekdayTable();
   });
   label.appendChild(checkbox);
-  label.appendChild(document.createTextNode(day + '요일'));
+  label.appendChild(document.createTextNode(day));
   weekdayFilterGroup.appendChild(label);
 });
 
@@ -787,83 +787,133 @@ function updateChartAndComparison() {
 }
 
 function renderWeekdayTable() {
-  const headerRow = document.getElementById('tableHeaderRow');
-  const bodyRow = document.getElementById('tableBodyRow');
-  headerRow.innerHTML = '<th>시간</th>';
-  bodyRow.innerHTML = '';
-
-  const currentSourceData = fullGroupedData[currentTimeUnit] || {};
-
-  const activeHoursSet = new Set();
-  Object.keys(currentSourceData).forEach(key => {
-    const parts = key.split(' ');
-    if(parts.length === 2) activeHoursSet.add(parts[1]);
-  });
-  const activeHours = Array.from(activeHoursSet).sort();
-
-  const filteredDates = labelsDates.filter(dateStr => {
-    const dayNum = new Date(dateStr).getDay();
-    const dayName = dayNames[dayNum];
-    return selectedWeekdays.includes(dayName);
-  }).sort().reverse();
-
-  if (filteredDates.length === 0) {
-    bodyRow.innerHTML = \`<tr><td colspan="100%" style="padding: 30px; color: #999;">선택한 요일에 해당하는 데이터가 없습니다.</td></tr>\`;
-    return;
-  }
-
-  filteredDates.forEach(dateStr => {
-    const dayNum = new Date(dateStr).getDay();
-    const th = document.createElement('th');
-    const displayDate = dateStr.substring(5); 
-    th.innerHTML = \`\${displayDate}<span class="weekday-badge">(\${dayNames[dayNum]})</span>\`;
-    headerRow.appendChild(th);
-  });
-
-  activeHours.forEach((hour, hIdx) => {
-    const tr = document.createElement('tr');
-    const tdHour = document.createElement('td');
+    const headerRow = document.getElementById('tableHeaderRow');
+    const bodyRow = document.getElementById('tableBodyRow');
     
-    // ⏱️ 요철 없는 HH:MM 포맷으로 렌더링
-    tdHour.innerText = formatCleanTime(hour);
-    tr.appendChild(tdHour);
+    headerRow.innerHTML = '<th>시간</th>';
+    bodyRow.innerHTML = '';
+
+    const currentSourceData = fullGroupedData[currentTimeUnit] || {};
+
+    const activeHoursSet = new Set();
+    Object.keys(currentSourceData).forEach(key => {
+        const parts = key.split(' ');
+        if(parts.length === 2) activeHoursSet.add(parts[1]);
+    });
+    const activeHours = Array.from(activeHoursSet).sort();
+
+    const filteredDates = labelsDates.filter(dateStr => {
+        const dayNum = new Date(dateStr).getDay();
+        const dayName = dayNames[dayNum];
+        return selectedWeekdays.includes(dayName);
+    }).sort().reverse();
+
+    if (filteredDates.length === 0) {
+        bodyRow.innerHTML = \`<tr><td colspan="100%" style="padding: 30px; color: #999;">선택한 요일에 해당하는 데이터가 없습니다.</td></tr>\`;
+        return;
+    }
 
     filteredDates.forEach(dateStr => {
-      const tdData = document.createElement('td');
-      const key = dateStr + " " + hour; 
-      if (currentSourceData[key] !== undefined) {
-        const currentVal = currentSourceData[key];
-        tdData.innerText = currentVal;
-
-        if (hIdx > 0) {
-          const prevHour = activeHours[hIdx - 1];
-          const prevKey = dateStr + " " + prevHour;
-          const prevVal = currentSourceData[prevKey];
-
-          if (prevVal !== undefined) {
-            const diff = currentVal - prevVal;
-            if (diff > 0) {
-              tdData.className = 'td-status-up';
-              tdData.innerHTML = \`\${currentVal}<span class="status-tag">▲</span>\`;
-            } else if (diff < 0) {
-              tdData.className = 'td-status-down';
-              tdData.innerHTML = \`\${currentVal}<span class="status-tag">▼</span>\`;
-            } else {
-              tdData.className = 'td-status-same';
-              tdData.innerHTML = \`\${currentVal}<span class="status-tag" style="color:#aaa;">-</span>\`;
-            }
-          }
-        }
-      } else {
-        tdData.innerText = '-';
-        tdData.className = 'empty-cell';
-      }
-      tr.appendChild(tdData);
+        const dayNum = new Date(dateStr).getDay();
+        const th = document.createElement('th');
+        const displayDate = dateStr.substring(5); 
+        th.innerHTML = \`\${displayDate}<span class="weekday-badge">(\${dayNames[dayNum]})</span>\`;
+        headerRow.appendChild(th);
     });
 
-    bodyRow.appendChild(tr);
-  });
+    // 💡 [핵심] 현재 부모 바디(bodyRow)에 저장된 기준 시간이 있는지 확인합니다.
+    const selectedBaselineHour = bodyRow.getAttribute('data-selected-hour') || null;
+
+    // 💡 날짜별 기준 값을 담아둘 오브젝트 (특정 시간이 선택되었을 때만 사용)
+    const baselineValuesPerDate = {};
+    if (selectedBaselineHour) {
+        filteredDates.forEach(dateStr => {
+            baselineValuesPerDate[dateStr] = currentSourceData[dateStr + " " + selectedBaselineHour];
+        });
+    }
+
+    activeHours.forEach((hour, hIdx) => {
+        const tr = document.createElement('tr');
+        const tdHour = document.createElement('td');
+        
+        // ⏱️ 요철 없는 HH:MM 포맷으로 렌더링
+        tdHour.innerText = formatCleanTime(hour);
+        
+        // 스타일 및 클릭이 가능함을 알려주는 시각적 효과 추가
+        tdHour.style.cursor = 'pointer';
+        tdHour.style.fontWeight = 'bold';
+        
+        // 만약 이 시간이 현재 선택된 기준 시간이라면 하이라이트 표시
+        if (hour === selectedBaselineHour) {
+            tdHour.style.backgroundColor = '#e6f7ff'; 
+            tdHour.innerText += ' 🎯'; // 기준점 표시 (선택 사항)
+        }
+
+        // 💡 [클릭 이벤트] 시간 셀을 누르면 발생하는 로직
+        tdHour.addEventListener('click', () => {
+            if (selectedBaselineHour === hour) {
+                // 이미 선택된 시간을 또 누르면 -> 선택 해제 (기존 모드로 복귀)
+                bodyRow.removeAttribute('data-selected-hour');
+            } else {
+                // 새로운 시간을 누르면 -> 해당 시간을 기준으로 세팅
+                bodyRow.setAttribute('data-selected-hour', hour);
+            }
+            // 🔄 다시 본인 함수를 호출해 테이블을 새로고침합니다.
+            renderWeekdayTable();
+        });
+
+        tr.appendChild(tdHour);
+
+        filteredDates.forEach(dateStr => {
+            const tdData = document.createElement('td');
+            const key = dateStr + " " + hour; 
+
+            if (currentSourceData[key] !== undefined) {
+                const currentVal = currentSourceData[key];
+                tdData.innerText = currentVal;
+
+                // 💡 비교할 기준값(compareVal) 찾기
+                let compareVal = undefined;
+
+                if (selectedBaselineHour) {
+                    // 1. 특정 시간이 선택된 상태라면 -> 그 시간의 데이터와 누적 비교
+                    compareVal = baselineValuesPerDate[dateStr];
+                    // 본인 시간 열은 비교 표시 제외
+                    if (hour === selectedBaselineHour) compareVal = undefined; 
+                } else {
+                    // 2. 아무것도 선택 안 된 평소 상태 -> 직전 시간과 비교 (기존 로직)
+                    if (hIdx > 0) {
+                        const prevHour = activeHours[hIdx - 1];
+                        compareVal = currentSourceData[dateStr + " " + prevHour];
+                    }
+                }
+
+                // 💡 증감 마크 표시 로직
+                if (compareVal !== undefined) {
+                    const diff = Number(((currentVal - compareVal)* 100).toFixed(3)) ;
+                    if (diff > 0) {
+                        tdData.className = 'td-status-up';
+                        tdData.innerHTML = \`\${currentVal}<span class="status-tag">▲(\${diff})</span>\`;
+                    } else if (diff < 0) {
+                        tdData.className = 'td-status-down';
+                        tdData.innerHTML = \`\${currentVal}<span class="status-tag">▼(\${diff})</span>\`;
+                    } else {
+                        tdData.className = 'td-status-same';
+                        tdData.innerHTML = \`\${currentVal}<span class="status-tag" style="color:#aaa;">-</span>\`;
+                    }
+                }
+
+            } else {
+                tdData.innerText = '-';
+                tdData.className = 'empty-cell';
+            }
+            tr.appendChild(tdData);
+        });
+
+        bodyRow.appendChild(tr);
+    });
 }
+
 
 function runSimulationEngine() {
   calculatedSimulations = [];
