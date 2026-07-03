@@ -1318,7 +1318,7 @@ const file = `./${exchange}_data.json`;
 try {
     const fileContent = fs.readFileSync(file, 'utf-8');
     const exchangeData = JSON.parse(fileContent);
-    console.log(`성공적으로 읽음: ${file}`);
+    console.log(`성공적으로 읽음: ${exchange} ${file}`);
     const html = generateChartHtmlString(exchangeData)
     if (exchange == 'vnd') {
       fs.writeFileSync('./index.html', html, 'utf-8');
