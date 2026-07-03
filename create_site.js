@@ -1323,7 +1323,7 @@ try {
     if (exchange == 'vnd') {
       fs.writeFileSync('./index.html', html, 'utf-8');
     } else {
-      fs.writeFileSync(`./${exchange}.html`, html, 'utf-8');
+      fs.writeFileSync(`./${exchange}/index.html`, html, 'utf-8');
     }
     
     console.log('사이트 생성 완료')
