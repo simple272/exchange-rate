@@ -375,7 +375,8 @@ const html =
             });
 
             // [핵심] 3단계: 완성된 행 배열을 뒤집어서(.reverse) 최신 시간부터 보이게 노출!
-            tbody.innerHTML = finalRows.reverse().join('');
+            // tbody.innerHTML = finalRows.reverse().join('');
+            tbody.innerHTML = finalRows.join('');
         }
 
         function onChangeUnit() {
@@ -391,7 +392,8 @@ const html =
         const timerElement = document.getElementById('timerDisplay');
 
         // 1초마다 남은 시간을 빼서 화면에 표기하고, 0초가 되면 새로고침
-        setInterval(() => {
+        const useInterval = false;
+        useInterval && setInterval(() => {
             timeLeft--;
             if (timeLeft <= 0) {
                 location.reload();

@@ -1313,13 +1313,19 @@ function renderRankList() {
 
 
 const fs = require('fs');
-const file = './vnd_data.json';
+const exchange = process.argv[2];
+const file = `./${exchange}_data.json`;
 try {
     const fileContent = fs.readFileSync(file, 'utf-8');
     const exchangeData = JSON.parse(fileContent);
     console.log(`성공적으로 읽음: ${file}`);
     const html = generateChartHtmlString(exchangeData)
-    fs.writeFileSync('./index.html', html, 'utf-8');
+    if (exchange == 'vnd') {
+      fs.writeFileSync('./index.html', html, 'utf-8');
+    } else {
+      fs.writeFileSync(`./${exchange}.html`, html, 'utf-8');
+    }
+    
     console.log('사이트 생성 완료')
 } catch (jsonErr) {
     console.error(`JSON 파싱 에러 (${file}):`, jsonErr.message);

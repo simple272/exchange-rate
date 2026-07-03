@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 
-function mergeJsonToDictionary(targetFolder, outputFilePath) {
+function mergeJsonToDictionary(targetFolder) {
     try {
         // 1. 대상 폴더 안의 모든 파일 목록 읽기
         const files = fs.readdirSync(targetFolder);
@@ -25,9 +25,6 @@ function mergeJsonToDictionary(targetFolder, outputFilePath) {
             }
         });
 
-        // 4. 합쳐진 하나의 Dictionary 객체를 파일로 저장
-        // fs.writeFileSync(outputFilePath, JSON.stringify(mergedDictionary, null, 2), 'utf-8');
-        // console.log(`\n🎉 하나의 Dictionary로 병합 완료! 결과 파일: ${outputFilePath}`);
         return mergedDictionary
 
     } catch (err) {
@@ -107,11 +104,15 @@ function averageBy30Minutes(data) {
 // 현재 경로의 'json_inputs' 폴더 안의 파일들을 'total.json'으로 합칩니다.
 // 본인의 폴더명에 맞게 첫 번째 인자를 수정하세요.
 // --------------------------------------------------------
-const rawData = mergeJsonToDictionary('./data', './total.json');
+function generate(exchange) {
+    const rawData = mergeJsonToDictionary(`./${exchange}`);
 
-const result = {
-    "30min": averageBy30Minutes(rawData),
-    "1hour": averageBy1Hour(rawData)
+    const result = {
+        "30min": averageBy30Minutes(rawData),
+        "1hour": averageBy1Hour(rawData)
+    }
+    console.log("--- 결과 ---");
+    fs.writeFileSync(`./${exchange}_data.json`, JSON.stringify(result, null, 2), 'utf-8');
 }
-console.log("--- 결과 ---");
-fs.writeFileSync('./vnd_data.json', JSON.stringify(result, null, 2), 'utf-8');
+
+generate(process.argv[2])
