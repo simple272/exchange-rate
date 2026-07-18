@@ -8,7 +8,7 @@
     <!-- PWA 설정을 위한 매니페스트 -->
     <link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%22%EC%9A%B0%EB%A6%AC%EC%A7%91%20%EB%83%89%EC%9E%A5%EA%B3%A0%22%2C%22short_name%22%3A%22%EB%83%89%EC%9E%A5%EA%B3%A0%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f3f4f6%22%2C%22theme_color%22%3A%22%232563eb%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22https%3A%2F%2Fcdn-icons-png.flaticon.com%2F512%2F3159%2F3159614.png%22%2C%22sizes%22%3A%22512x512%22%2C%22type%22%3A%22image%2Fpng%22%7D%5D%7D">
     
-    <!-- 버그 수정: Tailwind CSS v3 안정 버전으로 변경 -->
+    <!-- Tailwind CSS v3 안정 버전 -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
@@ -46,7 +46,6 @@
                 <label class="block text-lg font-bold mb-1">식품 사진</label>
                 <div class="relative bg-gray-200 rounded-2xl h-48 flex flex-col items-center justify-center overflow-hidden border-2 border-dashed border-gray-300">
                     <img id="photo-preview" class="w-full h-full object-cover hidden" alt="미리보기">
-                    <!-- 버그 수정: 아이폰 환경을 위해 muted 속성 강제 추가 -->
                     <video id="camera-stream" class="w-full h-full object-cover hidden" autoplay playsinline muted></video>
                     
                     <div id="camera-placeholder" class="text-center p-4">
@@ -87,14 +86,17 @@
         </div>
     </div>
 
-    <!-- [2] 긴급 만료 알림 모달창 -->
-    <div id="urgent-modal" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-6 hidden">
-        <div class="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl text-center">
-            <div class="text-red-500 text-5xl mb-3"><i class="fa-solid fa-triangle-exclamation"></i></div>
-            <h2 class="text-xl font-black mb-1">기한 임박·만료 알림</h2>
-            <p class="text-gray-500 text-sm mb-4">빨리 먹어야 하는 식품이 있습니다!</p>
-            <div id="urgent-list" class="bg-red-50 rounded-2xl p-4 mb-5 text-left text-sm text-red-900 space-y-1 max-h-40 overflow-y-auto"></div>
-            <button onclick="closeUrgentModal()" class="w-full bg-blue-600 text-white py-3.5 rounded-xl font-bold text-lg safe-touch">확인했습니다</button>
+    <!-- [2] 긴급 만료 알림 모달창 (텍스트 잘림 해결 완료) -->
+    <div id="urgent-modal" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl text-center max-h-[85vh] flex flex-col">
+            <div class="text-red-500 text-5xl mb-3 shrink-0"><i class="fa-solid fa-triangle-exclamation"></i></div>
+            <h2 class="text-xl font-black mb-1 shrink-0">기한 임박·만료 알림</h2>
+            <p class="text-gray-500 text-sm mb-4 shrink-0">빨리 먹어야 하는 식품이 있습니다!</p>
+            
+            <!-- 내용 스크롤 및 자동 줄바꿈 강제 적용 -->
+            <div id="urgent-list" class="bg-red-50 rounded-2xl p-4 mb-5 text-left text-base text-red-900 space-y-2 overflow-y-auto flex-1 break-all"></div>
+            
+            <button onclick="closeUrgentModal()" class="w-full bg-blue-600 text-white py-3.5 rounded-xl font-bold text-lg shrink-0 safe-touch">확인했습니다</button>
         </div>
     </div>
 
@@ -116,7 +118,7 @@
             document.getElementById('start-date').value = new Date().toISOString().split('T')[0];
         }
 
-        // 실시간 화면 그리기
+        // 실시간 화면 그리기 (코드 깨짐 완벽 해결)
         function renderFoods() {
             const listContainer = document.getElementById('food-list');
             const emptyMsg = document.getElementById('empty-msg');
@@ -136,13 +138,13 @@
                 const diffDays = Math.ceil((new Date(food.endDate) - new Date(today)) / (1000 * 60 * 60 * 24));
                 
                 let badgeColor = 'bg-blue-100 text-blue-700';
-                let dDayText = `D-${diffDays}`;
+                let dDayText = 'D-' + diffDays;
                 
                 if (diffDays <= 3 && diffDays >= 0) {
                     badgeColor = 'bg-red-100 text-red-700 font-black animate-pulse';
                 } else if (diffDays < 0) {
                     badgeColor = 'bg-slate-700 text-white';
-                    dDayText = `기한지남 (${Math.abs(diffDays)}일)`;
+                    dDayText = '기한지남 (' + Math.abs(diffDays) + '일)';
                 } else if (diffDays === 0) {
                     badgeColor = 'bg-red-600 text-white font-black';
                     dDayText = 'D-Day';
@@ -150,42 +152,44 @@
 
                 const card = document.createElement('div');
                 card.className = 'bg-white rounded-2xl shadow-sm p-4 flex items-center gap-4 border border-gray-200';
+                
+                // 버그의 원인이었던 기호 표현 방식 안전하게 대치
                 card.innerHTML = `
                     <div class="w-20 h-20 bg-gray-100 rounded-2xl overflow-hidden shrink-0 border border-gray-200">
-                        \${food.photo ? `<img src="\${food.photo}" class="w-full h-full object-cover">` : `<div class="w-full h-full flex items-center justify-center text-gray-300 text-2xl"><i class="fa-solid fa-utensils"></i></div>`}
+                        ` + (food.photo ? `<img src="` + food.photo + `" class="w-full h-full object-cover">` : `<div class="w-full h-full flex items-center justify-center text-gray-300 text-2xl"><i class="fa-solid fa-utensils"></i></div>`) + `
                     </div>
-                    <div class="flex-1 min-w-0">
+                    <div class="flex-1 min-w-0 break-all">
                         <div class="flex flex-wrap items-center gap-2 mb-1">
-                            <span class="text-xs font-bold px-2 py-0.5 rounded-md \${badgeColor}">\${dDayText}</span>
-                            <h3 class="text-lg font-bold text-gray-900 truncate">\${food.name}</h3>
+                            <span class="text-xs font-bold px-2 py-0.5 rounded-md ` + badgeColor + `">` + dDayText + `</span>
+                            <h3 class="text-lg font-bold text-gray-900 truncate">` + food.name + `</h3>
                         </div>
-                        <p class="text-xs text-gray-400">등록일: \${food.startDate}</p>
-                        <p class="text-xs text-red-600 font-bold">기한일: \${food.endDate}</p>
+                        <p class="text-xs text-gray-400">등록일: ` + food.startDate + `</p>
+                        <p class="text-xs text-red-600 font-bold">기한일: ` + food.endDate + `</p>
                     </div>
                     <div class="flex flex-col gap-1 shrink-0">
-                        <button onclick="editFood('\${food.id}')" class="text-gray-400 hover:text-blue-600 p-2 text-lg safe-touch" title="수정"><i class="fa-solid fa-pen-to-square"></i></button>
-                        <button onclick="deleteFood('\${food.id}')" class="text-gray-400 hover:text-red-600 p-2 text-lg safe-touch" title="삭제"><i class="fa-solid fa-trash"></i></button>
+                        <button onclick="editFood('` + food.id + `')" class="text-gray-400 hover:text-blue-600 p-2 text-lg safe-touch" title="수정"><i class="fa-solid fa-pen-to-square"></i></button>
+                        <button onclick="deleteFood('` + food.id + `')" class="text-gray-400 hover:text-red-600 p-2 text-lg safe-touch" title="삭제"><i class="fa-solid fa-trash"></i></button>
                     </div>
                 `;
                 listContainer.appendChild(card);
             });
         }
 
-        // 앱 켤 때 팝업 조건 검사 (10일, 5일, 3일, 2일, 1일 전 및 당일/경과 대상 포함)
+        // 팝업 알림 텍스트 잘림 해결 및 필터 세분화
         function checkUrgentFoods() {
             const today = new Date(); today.setHours(0,0,0,0);
             
             const urgent = foods.filter(f => {
                 const diff = Math.ceil((new Date(f.endDate) - today) / (1000 * 60 * 60 * 24));
-                return diff <= 10; // 10일 이하로 남은 모든 대상을 안전하게 필터링
+                return diff <= 10; 
             });
             
             if (urgent.length > 0) {
                 const listDiv = document.getElementById('urgent-list');
                 listDiv.innerHTML = urgent.map(f => {
                     const diff = Math.ceil((new Date(f.endDate) - today) / (1000 * 60 * 60 * 24));
-                    let text = diff < 0 ? `지남 (${Math.abs(diff)}일)` : diff === 0 ? '오늘만료' : `\${diff}일 남음`;
-                    return `<div class="py-1 border-b border-red-100 last:border-0">📌 <b>\${f.name}</b> <span class="text-xs text-red-600">(\${text})</span></div>`;
+                    let text = diff < 0 ? `지남 (` + Math.abs(diff) + `일)` : diff === 0 ? '오늘만료' : diff + `일 남음`;
+                    return `<div class="py-1.5 border-b border-red-100 last:border-0 block leading-tight">📌 <span class="font-bold">` + f.name + `</span> <span class="text-xs text-red-600 font-medium">(` + text + `)</span></div>`;
                 }).join('');
                 document.getElementById('urgent-modal').classList.remove('hidden');
             }
@@ -210,7 +214,6 @@
             document.getElementById('modal-title').innerText = '새 식품 등록';
         }
 
-        // 카메라 제어 로직 (버그 수정)
         async function startCamera() {
             const video = document.getElementById('camera-stream');
             const placeholder = document.getElementById('camera-placeholder');
@@ -229,9 +232,9 @@
                     audio: false 
                 });
                 video.srcObject = videoStream;
-                video.play(); // 버그 수정: 명시적 재생 호출
+                video.play();
             } catch (err) {
-                alert('카메라 구동 실패: 권한 승인이 필요하거나 지원되지 않는 브라우저입니다. 갤러리 선택을 활용해 주세요.');
+                alert('카메라 구동 실패: 권한이 필요하거나 지원되지 않는 환경입니다. 갤러리 선택을 활용해 주세요.');
                 stopCamera();
             }
         }
@@ -257,11 +260,7 @@
             const preview = document.getElementById('photo-preview');
             const canvas = document.createElement('canvas');
             
-            // 영상의 실제 크기를 받아 처리
-            const width = video.videoWidth || 400;
-            const height = video.videoHeight || 400;
             canvas.width = 400; canvas.height = 400; 
-            
             const ctx = canvas.getContext('2d');
             ctx.drawImage(video, 0, 0, 400, 400);
             
@@ -292,7 +291,6 @@
             }
         }
 
-        // 데이터 보존 및 처리
         function saveFood() {
             const id = document.getElementById('edit-id').value;
             const name = document.getElementById('food-name').value.trim();
@@ -306,9 +304,9 @@
 
             if (id) {
                 const index = foods.findIndex(f => f.id === id);
-                if (index !== -1) foods[index] = { id, name, startDate, endDate, photo };
+                if (index !== -1) foods[index] = { id: id, name: name, startDate: startDate, endDate: endDate, photo: photo };
             } else {
-                foods.push({ id: 'food_' + Date.now(), name, startDate, endDate, photo });
+                foods.push({ id: 'food_' + Date.now(), name: name, startDate: startDate, endDate: endDate, photo: photo });
             }
 
             localStorage.setItem('my-fridge-foods', JSON.stringify(foods));
