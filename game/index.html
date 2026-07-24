@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>피의 게임 데스매치 14x14 퍼즐 (WebRTC P2P)</title>
   
-  <!-- PeerJS CDN 추가 (무료 P2P 서버 이용) -->
+  <!-- PeerJS CDN -->
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 
   <style>
@@ -299,7 +299,7 @@
 
   <script>
     // -------------------------------------------------------------
-    // 1. PeerJS P2P 통신 서버 연결
+    // 1. PeerJS P2P 통신 서버 연결 Logic
     // -------------------------------------------------------------
     let peer = new Peer();
     let conn = null;
@@ -309,32 +309,37 @@
       document.getElementById('my-peer-id').value = id;
     });
 
-    // 누군가 나에게 연결을 시도했을 때 (내가 방장 / Player 1이 됨)
+    // 방장 (Player 1) - 누군가 접속했을 때
     peer.on('connection', (connection) => {
       conn = connection;
-      myPlayerRole = 1; // 방장은 Player 1
+      myPlayerRole = 1;
       setupConnectionListeners();
-      document.getElementById('status-info').innerText = "🟢 상대방과 연결되었습니다! (당신: Player 1 레드)";
-      
-      // 새 게임 판을 만들고 상대방에게 전송
+      document.getElementById('status-info').innerText = "🟢 상대방이 접속했습니다! (당신: Player 1 레드)";
       initGame(true);
     });
 
-    // 내가 상대방 ID로 연결을 시도할 때 (내가 참가자 / Player 2가 됨)
+    // 참가자 (Player 2) - 내가 상대방 ID로 연결 요청
     function connectToPeer() {
       const targetId = document.getElementById('target-peer-id').value.trim();
       if (!targetId) return alert("상대방 ID를 입력하세요.");
 
       conn = peer.connect(targetId);
-      myPlayerRole = 2; // 참가자는 Player 2
-      setupConnectionListeners();
-      document.getElementById('status-info').innerText = "🟢 상대방과 연결되었습니다! (당신: Player 2 옐로우)";
+      myPlayerRole = 2;
+
+      conn.on('open', () => {
+        setupConnectionListeners();
+        document.getElementById('status-info').innerText = "🟢 상대방과 연결되었습니다! (당신: Player 2 옐로우)";
+        // 방장에게 현재 게임 상태 동기화 요청
+        sendDataToPeer({ type: 'REQ_SYNC' });
+      });
     }
 
     function setupConnectionListeners() {
+      if (!conn) return;
+
       conn.on('data', (data) => {
-        // 상대방이 전달한 게임 데이터 수신 및 업데이트
         if (data.type === 'SYNC') {
+          // 실시간 상태 업데이트
           gameState = data.gameState;
           currentTurn = data.currentTurn;
           lastMovedCarId = data.lastMovedCarId;
@@ -345,8 +350,9 @@
           updateTurnDisplay();
           updateScoreDisplay();
           render();
-        } else if (data.type === 'RESTART') {
-          initGame(false);
+        } else if (data.type === 'REQ_SYNC' && myPlayerRole === 1) {
+          // Player 2가 동기화를 요청하면 현재 판 정보 전송
+          broadcastGameState();
         }
       });
 
@@ -370,7 +376,7 @@
     }
 
     // -------------------------------------------------------------
-    // 2. 게임 로직
+    // 2. 게임 코어 로직
     // -------------------------------------------------------------
     const BOARD_SIZE = 14;
     const CELL_SIZE = 25; 
@@ -539,8 +545,19 @@
     }
 
     function requestNewGame() {
-      if (!conn) return alert("상대방과 먼저 연결되어야 합니다.");
+      if (!conn || !conn.open) return alert("상대방과 먼저 연결되어야 합니다.");
       initGame(true);
+    }
+
+    function broadcastGameState() {
+      sendDataToPeer({
+        type: 'SYNC',
+        gameState,
+        currentTurn,
+        lastMovedCarId,
+        redEscapedCount,
+        yellowEscapedCount
+      });
     }
 
     function initGame(shouldBroadCast = true) {
@@ -561,14 +578,7 @@
       render();
 
       if (shouldBroadCast) {
-        sendDataToPeer({
-          type: 'SYNC',
-          gameState,
-          currentTurn,
-          lastMovedCarId,
-          redEscapedCount,
-          yellowEscapedCount
-        });
+        broadcastGameState();
       }
     }
 
@@ -748,15 +758,8 @@
       updateScoreDisplay();
       render();
 
-      // 이동 데이터를 상대방에게 전송 (동기화)
-      sendDataToPeer({
-        type: 'SYNC',
-        gameState,
-        currentTurn,
-        lastMovedCarId,
-        redEscapedCount,
-        yellowEscapedCount
-      });
+      // 상대방에게 이동 후 최신 상태 전송
+      broadcastGameState();
     }
 
     function updateTurnDisplay() {
