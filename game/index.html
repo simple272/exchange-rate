@@ -3,7 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>피의 게임 데스매치 14x14 퍼즐</title>
+  <title>피의 게임 데스매치 14x14 퍼즐 (WebRTC P2P)</title>
+  
+  <!-- PeerJS CDN 추가 (무료 P2P 서버 이용) -->
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+
   <style>
     * { box-sizing: border-box; user-select: none; -webkit-tap-highlight-color: transparent; }
     body {
@@ -17,6 +21,43 @@
       min-height: 100vh;
       margin: 0;
       padding: 8px;
+    }
+
+    .p2p-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      width: 100%;
+      max-width: 350px;
+      background: #1e2025;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid #2c2e33;
+      margin-bottom: 10px;
+      font-size: 12px;
+    }
+    .p2p-row {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .p2p-panel input {
+      flex: 1;
+      padding: 6px 10px;
+      border-radius: 6px;
+      border: 1px solid #373a40;
+      background: #121316;
+      color: #fff;
+      font-size: 12px;
+    }
+    .p2p-panel button {
+      padding: 6px 12px;
+      background: #00e5ff;
+      border: none;
+      border-radius: 6px;
+      font-weight: bold;
+      cursor: pointer;
+      color: #000;
     }
 
     .header-panel {
@@ -215,12 +256,25 @@
 </head>
 <body>
 
+  <!-- P2P 대전 상태 패널 -->
+  <div class="p2p-panel">
+    <div class="p2p-row">
+      <span>내 ID:</span>
+      <input type="text" id="my-peer-id" readonly placeholder="ID 생성 중...">
+      <button onclick="copyMyId()">복사</button>
+    </div>
+    <div class="p2p-row">
+      <input type="text" id="target-peer-id" placeholder="상대방 ID 입력">
+      <button onclick="connectToPeer()">연결하기</button>
+    </div>
+  </div>
+
   <div class="header-panel">
     <div id="turn-display" class="turn-badge p1-turn">Player 1 (레드) 턴</div>
     <div id="score-display" class="score-board">탈출 | 🔴 0/4 vs 🟡 0/4</div>
   </div>
 
-  <div id="status-info" class="status-text">차량을 선택하세요</div>
+  <div id="status-info" class="status-text">상대방 연결을 기다리는 중...</div>
 
   <div id="board-container">
     <div class="grid-lines"></div>
@@ -239,11 +293,85 @@
       <span id="density-val" style="font-weight: bold; color: #00e5ff;">보통 (24대)</span>
     </div>
     <div class="action-row">
-      <button class="reset-btn" onclick="initGame()">새 게임 (설정 반영 재배치)</button>
+      <button class="reset-btn" onclick="requestNewGame()">새 게임 (설정 반영 재배치)</button>
     </div>
   </div>
 
   <script>
+    // -------------------------------------------------------------
+    // 1. PeerJS P2P 통신 서버 연결
+    // -------------------------------------------------------------
+    let peer = new Peer();
+    let conn = null;
+    let myPlayerRole = null; // 1: Player 1 (레드), 2: Player 2 (옐로우)
+
+    peer.on('open', (id) => {
+      document.getElementById('my-peer-id').value = id;
+    });
+
+    // 누군가 나에게 연결을 시도했을 때 (내가 방장 / Player 1이 됨)
+    peer.on('connection', (connection) => {
+      conn = connection;
+      myPlayerRole = 1; // 방장은 Player 1
+      setupConnectionListeners();
+      document.getElementById('status-info').innerText = "🟢 상대방과 연결되었습니다! (당신: Player 1 레드)";
+      
+      // 새 게임 판을 만들고 상대방에게 전송
+      initGame(true);
+    });
+
+    // 내가 상대방 ID로 연결을 시도할 때 (내가 참가자 / Player 2가 됨)
+    function connectToPeer() {
+      const targetId = document.getElementById('target-peer-id').value.trim();
+      if (!targetId) return alert("상대방 ID를 입력하세요.");
+
+      conn = peer.connect(targetId);
+      myPlayerRole = 2; // 참가자는 Player 2
+      setupConnectionListeners();
+      document.getElementById('status-info').innerText = "🟢 상대방과 연결되었습니다! (당신: Player 2 옐로우)";
+    }
+
+    function setupConnectionListeners() {
+      conn.on('data', (data) => {
+        // 상대방이 전달한 게임 데이터 수신 및 업데이트
+        if (data.type === 'SYNC') {
+          gameState = data.gameState;
+          currentTurn = data.currentTurn;
+          lastMovedCarId = data.lastMovedCarId;
+          redEscapedCount = data.redEscapedCount;
+          yellowEscapedCount = data.yellowEscapedCount;
+
+          selectedCarId = null;
+          updateTurnDisplay();
+          updateScoreDisplay();
+          render();
+        } else if (data.type === 'RESTART') {
+          initGame(false);
+        }
+      });
+
+      conn.on('close', () => {
+        alert("상대방과의 연결이 끊어졌습니다.");
+        document.getElementById('status-info').innerText = "🔴 연결이 끊어졌습니다.";
+      });
+    }
+
+    function sendDataToPeer(data) {
+      if (conn && conn.open) {
+        conn.send(data);
+      }
+    }
+
+    function copyMyId() {
+      const idInput = document.getElementById('my-peer-id');
+      idInput.select();
+      navigator.clipboard.writeText(idInput.value);
+      alert("내 ID가 복사되었습니다! 상대방에게 전달하세요.");
+    }
+
+    // -------------------------------------------------------------
+    // 2. 게임 로직
+    // -------------------------------------------------------------
     const BOARD_SIZE = 14;
     const CELL_SIZE = 25; 
 
@@ -410,10 +538,15 @@
       return null;
     }
 
-    function initGame() {
+    function requestNewGame() {
+      if (!conn) return alert("상대방과 먼저 연결되어야 합니다.");
+      initGame(true);
+    }
+
+    function initGame(shouldBroadCast = true) {
       const layout = generateRandomLayout();
       if (!layout) {
-        initGame();
+        initGame(shouldBroadCast);
         return;
       }
       gameState = layout;
@@ -426,6 +559,17 @@
       updateTurnDisplay();
       updateScoreDisplay();
       render();
+
+      if (shouldBroadCast) {
+        sendDataToPeer({
+          type: 'SYNC',
+          gameState,
+          currentTurn,
+          lastMovedCarId,
+          redEscapedCount,
+          yellowEscapedCount
+        });
+      }
     }
 
     function getOccupiedGrid(excludeId) {
@@ -443,7 +587,6 @@
       return grid;
     }
 
-    // 이동 타겟 계산: 이동 후 차량의 시작 위치(targetX, targetY) 탐색
     function getValidMoveTargets(car) {
       const targets = [];
       if (!car) return targets;
@@ -451,23 +594,19 @@
       const grid = getOccupiedGrid(car.id);
 
       if (car.dir === 'H') {
-        // 음수 방향 (좌측)
         for (let nx = car.x - 1; nx >= 0; nx--) {
-          if (grid[car.y][nx]) break; // 다른 장애물에 막힘
+          if (grid[car.y][nx]) break;
           targets.push({ x: nx, y: car.y, side: 'head' });
         }
-        // 양수 방향 (우측)
         for (let nx = car.x + 1; nx + car.len <= BOARD_SIZE; nx++) {
-          if (grid[car.y][nx + car.len - 1]) break; // 다른 장애물에 막힘
+          if (grid[car.y][nx + car.len - 1]) break;
           targets.push({ x: nx, y: car.y, side: 'tail' });
         }
       } else {
-        // 음수 방향 (상단)
         for (let ny = car.y - 1; ny >= 0; ny--) {
           if (grid[ny][car.x]) break;
           targets.push({ x: car.x, y: ny, side: 'head' });
         }
-        // 양수 방향 (하단)
         for (let ny = car.y + 1; ny + car.len <= BOARD_SIZE; ny++) {
           if (grid[ny + car.len - 1][car.x]) break;
           targets.push({ x: car.x, y: ny, side: 'tail' });
@@ -514,7 +653,6 @@
         const selectedCar = gameState.find(c => c.id === selectedCarId);
         const rawTargets = getValidMoveTargets(selectedCar);
 
-        // 양 끝 기준 버튼 배치 (원래 차가 위치한 칸 영역에는 표시하지 않음)
         rawTargets.forEach(t => {
           const targetEl = document.createElement('div');
           targetEl.classList.add('move-target');
@@ -522,7 +660,6 @@
           let pointX = t.x;
           let pointY = t.y;
 
-          // 이동 방향의 맨 끝점(머리/꼬리) 위치에 포인트를 찍음
           if (selectedCar.dir === 'H') {
             if (t.side === 'tail') pointX = t.x + selectedCar.len - 1;
           } else {
@@ -543,6 +680,11 @@
     }
 
     function selectCar(id) {
+      if (myPlayerRole && currentTurn !== myPlayerRole) {
+        document.getElementById('status-info').innerText = "⚠️ 상대방 턴입니다. 기다려주세요!";
+        return;
+      }
+
       const car = gameState.find(c => c.id === id);
       const statusInfo = document.getElementById('status-info');
 
@@ -582,39 +724,39 @@
       car.x = targetX;
       car.y = targetY;
 
-      const statusInfo = document.getElementById('status-info');
-
       if ((car.type === 'red' || car.type === 'yellow') && isAtOuterEdge(car, targetX, targetY)) {
         gameState = gameState.filter(c => c.id !== car.id);
         
         if (car.type === 'red') redEscapedCount++;
         if (car.type === 'yellow') yellowEscapedCount++;
 
-        updateScoreDisplay();
-        statusInfo.innerText = `🎉 ${car.type === 'red' ? '레드' : '옐로우'} 차량 1대 탈출 성공!`;
-        
         lastMovedCarId = null;
 
         if (redEscapedCount >= 4) {
-          alert("🎉 Player 1 (레드) 승리! 모든 차량이 탈출했습니다.");
-          initGame();
-          return;
-        }
-        if (yellowEscapedCount >= 4) {
-          alert("🎉 Player 2 (옐로우) 승리! 모든 차량이 탈출했습니다.");
-          initGame();
-          return;
+          alert("🎉 Player 1 (레드) 승리!");
+        } else if (yellowEscapedCount >= 4) {
+          alert("🎉 Player 2 (옐로우) 승리!");
         }
       } else {
         lastMovedCarId = car.id;
-        statusInfo.innerText = "차량을 선택하세요";
       }
 
       selectedCarId = null;
       currentTurn = currentTurn === 1 ? 2 : 1;
 
       updateTurnDisplay();
+      updateScoreDisplay();
       render();
+
+      // 이동 데이터를 상대방에게 전송 (동기화)
+      sendDataToPeer({
+        type: 'SYNC',
+        gameState,
+        currentTurn,
+        lastMovedCarId,
+        redEscapedCount,
+        yellowEscapedCount
+      });
     }
 
     function updateTurnDisplay() {
@@ -633,7 +775,6 @@
     }
 
     updateDensityLabel();
-    initGame();
   </script>
 </body>
 </html>
