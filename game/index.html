@@ -33,7 +33,7 @@
       padding: 10px;
       border-radius: 8px;
       border: 1px solid #2c2e33;
-      margin-bottom: 10px;
+      margin-bottom: 8px;
       font-size: 12px;
     }
     .p2p-row {
@@ -60,6 +60,20 @@
       color: #000;
     }
 
+    .my-role-badge {
+      width: 100%;
+      max-width: 350px;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 800;
+      padding: 6px;
+      border-radius: 6px;
+      background: #1e2025;
+      border: 1px solid #373a40;
+      margin-bottom: 8px;
+      color: #909296;
+    }
+
     .header-panel {
       display: flex;
       align-items: center;
@@ -70,7 +84,7 @@
     }
     .turn-badge {
       padding: 5px 12px;
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 700;
       border-radius: 16px;
       background-color: #1e2025;
@@ -208,7 +222,7 @@
       width: 100%;
       max-width: 350px;
       margin-top: 10px;
-      gap: 10px;
+      gap: 8px;
     }
 
     .density-control {
@@ -236,21 +250,45 @@
       justify-content: center;
     }
 
-    .reset-btn {
-      padding: 10px 20px;
-      background: #25262b;
+    .btn {
+      flex: 1;
+      padding: 10px 12px;
       border: 1px solid #373a40;
-      color: #c1c2c5;
       font-weight: 600;
-      font-size: 13px;
+      font-size: 12px;
       border-radius: 8px;
       cursor: pointer;
       transition: all 0.15s ease;
       box-shadow: 0 3px 8px rgba(0,0,0,0.3);
+      text-align: center;
     }
-    .reset-btn:hover {
+    
+    .btn-reset {
+      background: #25262b;
+      color: #c1c2c5;
+    }
+    .btn-reset:hover:not(:disabled) {
       background: #2c2e33;
       color: #fff;
+    }
+    .btn-reset:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      border-color: #222;
+    }
+
+    .btn-surrender {
+      background: #3b1219;
+      color: #ff6b6b;
+      border-color: #5c1d28;
+    }
+    .btn-surrender:hover:not(:disabled) {
+      background: #521822;
+    }
+    .btn-surrender:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      border-color: #222;
     }
   </style>
 </head>
@@ -269,12 +307,15 @@
     </div>
   </div>
 
+  <!-- 내 역할 안내 바 -->
+  <div id="my-role-display" class="my-role-badge">상대방 연결을 기다리는 중...</div>
+
   <div class="header-panel">
     <div id="turn-display" class="turn-badge p1-turn">Player 1 (레드) 턴</div>
     <div id="score-display" class="score-board">탈출 | 🔴 0/4 vs 🟡 0/4</div>
   </div>
 
-  <div id="status-info" class="status-text">상대방 연결을 기다리는 중...</div>
+  <div id="status-info" class="status-text">연결 대기 중</div>
 
   <div id="board-container">
     <div class="grid-lines"></div>
@@ -293,7 +334,8 @@
       <span id="density-val" style="font-weight: bold; color: #00e5ff;">보통 (24대)</span>
     </div>
     <div class="action-row">
-      <button class="reset-btn" onclick="requestNewGame()">새 게임 (설정 반영 재배치)</button>
+      <button id="surrender-btn" class="btn btn-surrender" onclick="surrenderGame()" disabled>포기하기 (기권)</button>
+      <button id="reset-btn" class="btn btn-reset" onclick="requestNewGame()" disabled>새 게임 시작</button>
     </div>
   </div>
 
@@ -304,6 +346,7 @@
     let peer = new Peer();
     let conn = null;
     let myPlayerRole = null; // 1: Player 1 (레드), 2: Player 2 (옐로우)
+    let isGameActive = false; // 게임 진행 상태 플래그
 
     peer.on('open', (id) => {
       document.getElementById('my-peer-id').value = id;
@@ -313,9 +356,10 @@
     peer.on('connection', (connection) => {
       conn = connection;
       myPlayerRole = 1;
+      updateMyRoleBadge();
       setupConnectionListeners();
-      document.getElementById('status-info').innerText = "🟢 상대방이 접속했습니다! (당신: Player 1 레드)";
-      initGame(true);
+      document.getElementById('status-info').innerText = "🟢 상대방이 접속했습니다!";
+      initGame(true, false);
     });
 
     // 참가자 (Player 2) - 내가 상대방 ID로 연결 요청
@@ -325,13 +369,26 @@
 
       conn = peer.connect(targetId);
       myPlayerRole = 2;
+      updateMyRoleBadge();
 
       conn.on('open', () => {
         setupConnectionListeners();
-        document.getElementById('status-info').innerText = "🟢 상대방과 연결되었습니다! (당신: Player 2 옐로우)";
-        // 방장에게 현재 게임 상태 동기화 요청
+        document.getElementById('status-info').innerText = "🟢 상대방과 연결되었습니다!";
         sendDataToPeer({ type: 'REQ_SYNC' });
       });
+    }
+
+    function updateMyRoleBadge() {
+      const badge = document.getElementById('my-role-display');
+      if (myPlayerRole === 1) {
+        badge.innerText = "내 역할: Player 1 (🔴 레드)";
+        badge.style.color = "#ff5252";
+        badge.style.borderColor = "#ff5252";
+      } else if (myPlayerRole === 2) {
+        badge.innerText = "내 역할: Player 2 (🟡 옐로우)";
+        badge.style.color = "#ffd600";
+        badge.style.borderColor = "#ffd600";
+      }
     }
 
     function setupConnectionListeners() {
@@ -339,26 +396,38 @@
 
       conn.on('data', (data) => {
         if (data.type === 'SYNC') {
-          // 실시간 상태 업데이트
           gameState = data.gameState;
           currentTurn = data.currentTurn;
           lastMovedCarId = data.lastMovedCarId;
           redEscapedCount = data.redEscapedCount;
           yellowEscapedCount = data.yellowEscapedCount;
+          isGameActive = data.isGameActive;
 
           selectedCarId = null;
           updateTurnDisplay();
           updateScoreDisplay();
+          updateButtonStates();
           render();
+
+          if (data.isNewGameNotify) {
+            setTimeout(() => alert("🎮 상대방이 새 게임을 시작했습니다!"), 50);
+          }
         } else if (data.type === 'REQ_SYNC' && myPlayerRole === 1) {
-          // Player 2가 동기화를 요청하면 현재 판 정보 전송
           broadcastGameState();
+        } else if (data.type === 'SURRENDER') {
+          isGameActive = false;
+          updateButtonStates();
+          const winner = data.surrenderedRole === 1 ? "Player 2 (옐로우)" : "Player 1 (레드)";
+          alert(`🏳️ 상대방이 기권했습니다!
+🎉 ${winner} 승리!`);
         }
       });
 
       conn.on('close', () => {
         alert("상대방과의 연결이 끊어졌습니다.");
         document.getElementById('status-info').innerText = "🔴 연결이 끊어졌습니다.";
+        isGameActive = false;
+        updateButtonStates();
       });
     }
 
@@ -373,6 +442,19 @@
       idInput.select();
       navigator.clipboard.writeText(idInput.value);
       alert("내 ID가 복사되었습니다! 상대방에게 전달하세요.");
+    }
+
+    function updateButtonStates() {
+      const resetBtn = document.getElementById('reset-btn');
+      const surrenderBtn = document.getElementById('surrender-btn');
+
+      if (isGameActive) {
+        resetBtn.disabled = true; // 진행 중엔 새 게임 불가
+        surrenderBtn.disabled = false; // 진행 중엔 기권 가능
+      } else {
+        resetBtn.disabled = !conn || !conn.open; // 게임 끝났거나 연결 상태일 때 새 게임 가능
+        surrenderBtn.disabled = true;
+      }
     }
 
     // -------------------------------------------------------------
@@ -546,24 +628,39 @@
 
     function requestNewGame() {
       if (!conn || !conn.open) return alert("상대방과 먼저 연결되어야 합니다.");
-      initGame(true);
+      initGame(true, true);
     }
 
-    function broadcastGameState() {
+    function surrenderGame() {
+      if (!isGameActive) return;
+      if (!confirm("정말로 기권(포기)하시겠습니까? 상대방의 승리로 처리됩니다.")) return;
+
+      isGameActive = false;
+      updateButtonStates();
+      sendDataToPeer({
+        type: 'SURRENDER',
+        surrenderedRole: myPlayerRole
+      });
+      alert("기권하셨습니다. 상대방의 승리입니다.");
+    }
+
+    function broadcastGameState(isNewGameNotify = false) {
       sendDataToPeer({
         type: 'SYNC',
         gameState,
         currentTurn,
         lastMovedCarId,
         redEscapedCount,
-        yellowEscapedCount
+        yellowEscapedCount,
+        isGameActive,
+        isNewGameNotify
       });
     }
 
-    function initGame(shouldBroadCast = true) {
+    function initGame(shouldBroadCast = true, isNewGameNotify = false) {
       const layout = generateRandomLayout();
       if (!layout) {
-        initGame(shouldBroadCast);
+        initGame(shouldBroadCast, isNewGameNotify);
         return;
       }
       gameState = layout;
@@ -572,13 +669,15 @@
       lastMovedCarId = null;
       redEscapedCount = 0;
       yellowEscapedCount = 0;
+      isGameActive = true;
 
       updateTurnDisplay();
       updateScoreDisplay();
+      updateButtonStates();
       render();
 
       if (shouldBroadCast) {
-        broadcastGameState();
+        broadcastGameState(isNewGameNotify);
       }
     }
 
@@ -690,6 +789,8 @@
     }
 
     function selectCar(id) {
+      if (!isGameActive) return;
+
       if (myPlayerRole && currentTurn !== myPlayerRole) {
         document.getElementById('status-info').innerText = "⚠️ 상대방 턴입니다. 기다려주세요!";
         return;
@@ -743,8 +844,10 @@
         lastMovedCarId = null;
 
         if (redEscapedCount >= 4) {
+          isGameActive = false;
           alert("🎉 Player 1 (레드) 승리!");
         } else if (yellowEscapedCount >= 4) {
+          isGameActive = false;
           alert("🎉 Player 2 (옐로우) 승리!");
         }
       } else {
@@ -756,9 +859,9 @@
 
       updateTurnDisplay();
       updateScoreDisplay();
+      updateButtonStates();
       render();
 
-      // 상대방에게 이동 후 최신 상태 전송
       broadcastGameState();
     }
 
