@@ -456,7 +456,7 @@
     }
 
     // -------------------------------------------------------------
-    // 2. 게임 코어 및 경계 배치 검증 로직
+    // 2. 게임 코어 및 완벽한 배치 검증 알고리즘
     // -------------------------------------------------------------
     const BOARD_SIZE = 14;
     const CELL_SIZE = 25; 
@@ -518,75 +518,55 @@
       }
     }
 
-    // 💡 경계 고립 방지 검증 알고리즘 (빠르고 정확한 탈출 가능성 탐색)
-    function checkSpecialCarNotTrapped(layout, v) {
-      // 해당 차량 이동 축에 있는 모든 오브젝트 추출
-      const sameLineOccupants = layout.filter(o => {
-        if (o.id === v.id) return false;
-        return v.dir === 'H' ? o.y === v.y : o.x === v.x;
+    // 💡 강화된 억까 방지 검증 알고리즘 (빈 공간 수치 검사 및 고립 완벽 차단)
+    function checkSpecialCarNotTrapped(layout, targetCar) {
+      const grid = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(null));
+      layout.forEach(v => {
+        for (let i = 0; i < v.len; i++) {
+          const cx = v.dir === 'H' ? v.x + i : v.x;
+          const cy = v.dir === 'V' ? v.y + i : v.y;
+          if (cx >= 0 && cx < BOARD_SIZE && cy >= 0 && cy < BOARD_SIZE) {
+            grid[cy][cx] = v;
+          }
+        }
       });
 
-      // 양방향으로 꽉 막힌 벽/장애물이 있는지 구체적 검사
+      let lineCells = [];
+      if (targetCar.dir === 'H') {
+        for (let x = 0; x < BOARD_SIZE; x++) lineCells.push(grid[targetCar.y][x]);
+      } else {
+        for (let y = 0; y < BOARD_SIZE; y++) lineCells.push(grid[y][targetCar.x]);
+      }
+
+      // 1. 해당 이동 라인에 빈 공간(Free Space)이 최소 3칸 이상 확보되어야 차를 우회시킬 수 있음
+      const emptyCount = lineCells.filter(cell => cell === null).length;
+      if (emptyCount < 3) return false;
+
+      // 2. 고정 블록(주황색)에 의해 통로가 원천 봉쇄되어 있는지 검사
+      const startIdx = targetCar.dir === 'H' ? targetCar.x : targetCar.y;
+      const endIdx = startIdx + targetCar.len - 1;
+
       let negBlock = false;
       let posBlock = false;
+      let negObstacles = 0;
+      let posObstacles = 0;
 
-      sameLineOccupants.forEach(o => {
-        for (let i = 0; i < o.len; i++) {
-          const cx = o.dir === 'H' ? o.x + i : o.x;
-          const cy = o.dir === 'V' ? o.y + i : o.y;
-
-          if (v.dir === 'H') {
-            if (cx < v.x) {
-              // 주황색 고정 블록이 직진 경로 바로 앞에 가로막고 있으면 완전 갇힘 처리
-              if (o.type === 'block') negBlock = true;
-            }
-            if (cx >= v.x + v.len) {
-              if (o.type === 'block') posBlock = true;
-            }
-          } else {
-            if (cy < v.y) {
-              if (o.type === 'block') negBlock = true;
-            }
-            if (cy >= v.y + v.len) {
-              if (o.type === 'block') posBlock = true;
-            }
-          }
+      for (let i = startIdx - 1; i >= 0; i--) {
+        if (lineCells[i] !== null) {
+          if (lineCells[i].type === 'block') negBlock = true;
+          negObstacles++;
         }
-      });
+      }
 
-      // 양방향에 주황색 고정 블록이 가로막는 최악의 고립은 절대 불가
-      if (negBlock && posBlock) return false;
-
-      // 교차로 수직 장애물에 대한 모서리 고립 여부 체크
-      const perpendiculars = layout.filter(o => {
-        if (o.id === v.id) return false;
-        return v.dir === 'H' ? o.dir === 'V' : o.dir === 'H';
-      });
-
-      let blockingOnNegSide = 0;
-      let blockingOnPosSide = 0;
-
-      perpendiculars.forEach(o => {
-        for (let i = 0; i < o.len; i++) {
-          const cx = o.dir === 'H' ? o.x + i : o.x;
-          const cy = o.dir === 'V' ? o.y + i : o.y;
-
-          if (v.dir === 'H') {
-            if (cy === v.y) {
-              if (cx < v.x) blockingOnNegSide++;
-              if (cx >= v.x + v.len) blockingOnPosSide++;
-            }
-          } else {
-            if (cx === v.x) {
-              if (cy < v.y) blockingOnNegSide++;
-              if (cy >= v.y + v.len) blockingOnPosSide++;
-            }
-          }
+      for (let i = endIdx + 1; i < BOARD_SIZE; i++) {
+        if (lineCells[i] !== null) {
+          if (lineCells[i].type === 'block') posBlock = true;
+          posObstacles++;
         }
-      });
+      }
 
-      // 직진 경로 양쪽에 2개 이상의 직각 차량이 이중 샌드위치로 막아서 움직일 여지가 전혀 없는 경우 배제
-      if (blockingOnNegSide >= 2 && blockingOnPosSide >= 2) return false;
+      if (negBlock && posBlock) return false; // 양쪽 다 고정 블록으로 가로막힌 경우
+      if (negObstacles >= 4 && posObstacles >= 4) return false; // 양쪽 다 여유 공간 없이 벽으로 막힌 경우
 
       return true;
     }
@@ -596,7 +576,7 @@
       const outerConfig = densityMap[densityLevel];
 
       let attempts = 0;
-      while (attempts < 1000) {
+      while (attempts < 2000) {
         attempts++;
         const board = createEmptyBoard();
         const layout = [];
