@@ -341,18 +341,17 @@
 
   <script>
     // -------------------------------------------------------------
-    // 1. PeerJS P2P 통신 서버 연결 Logic
+    // 1. PeerJS P2P 통신 서버 연결
     // -------------------------------------------------------------
     let peer = new Peer();
     let conn = null;
-    let myPlayerRole = null; // 1: Player 1 (레드), 2: Player 2 (옐로우)
-    let isGameActive = false; // 게임 진행 상태 플래그
+    let myPlayerRole = null; 
+    let isGameActive = false;
 
     peer.on('open', (id) => {
       document.getElementById('my-peer-id').value = id;
     });
 
-    // 방장 (Player 1) - 누군가 접속했을 때
     peer.on('connection', (connection) => {
       conn = connection;
       myPlayerRole = 1;
@@ -362,7 +361,6 @@
       initGame(true, false);
     });
 
-    // 참가자 (Player 2) - 내가 상대방 ID로 연결 요청
     function connectToPeer() {
       const targetId = document.getElementById('target-peer-id').value.trim();
       if (!targetId) return alert("상대방 ID를 입력하세요.");
@@ -449,16 +447,16 @@
       const surrenderBtn = document.getElementById('surrender-btn');
 
       if (isGameActive) {
-        resetBtn.disabled = true; // 진행 중엔 새 게임 불가
-        surrenderBtn.disabled = false; // 진행 중엔 기권 가능
+        resetBtn.disabled = true;
+        surrenderBtn.disabled = false;
       } else {
-        resetBtn.disabled = !conn || !conn.open; // 게임 끝났거나 연결 상태일 때 새 게임 가능
+        resetBtn.disabled = !conn || !conn.open;
         surrenderBtn.disabled = true;
       }
     }
 
     // -------------------------------------------------------------
-    // 2. 게임 코어 로직
+    // 2. 게임 코어 및 경계 배치 검증 로직
     // -------------------------------------------------------------
     const BOARD_SIZE = 14;
     const CELL_SIZE = 25; 
@@ -520,31 +518,77 @@
       }
     }
 
+    // 💡 경계 고립 방지 검증 알고리즘 (빠르고 정확한 탈출 가능성 탐색)
     function checkSpecialCarNotTrapped(layout, v) {
-      const sameDirOccupants = layout.filter(o => {
+      // 해당 차량 이동 축에 있는 모든 오브젝트 추출
+      const sameLineOccupants = layout.filter(o => {
         if (o.id === v.id) return false;
         return v.dir === 'H' ? o.y === v.y : o.x === v.x;
       });
 
-      let hasNegativeSide = false;
-      let hasPositiveSide = false;
+      // 양방향으로 꽉 막힌 벽/장애물이 있는지 구체적 검사
+      let negBlock = false;
+      let posBlock = false;
 
-      sameDirOccupants.forEach(o => {
+      sameLineOccupants.forEach(o => {
         for (let i = 0; i < o.len; i++) {
           const cx = o.dir === 'H' ? o.x + i : o.x;
           const cy = o.dir === 'V' ? o.y + i : o.y;
 
           if (v.dir === 'H') {
-            if (cx < v.x) hasNegativeSide = true;
-            if (cx >= v.x + v.len) hasPositiveSide = true;
+            if (cx < v.x) {
+              // 주황색 고정 블록이 직진 경로 바로 앞에 가로막고 있으면 완전 갇힘 처리
+              if (o.type === 'block') negBlock = true;
+            }
+            if (cx >= v.x + v.len) {
+              if (o.type === 'block') posBlock = true;
+            }
           } else {
-            if (cy < v.y) hasNegativeSide = true;
-            if (cy >= v.y + v.len) hasPositiveSide = true;
+            if (cy < v.y) {
+              if (o.type === 'block') negBlock = true;
+            }
+            if (cy >= v.y + v.len) {
+              if (o.type === 'block') posBlock = true;
+            }
           }
         }
       });
 
-      return !(hasNegativeSide && hasPositiveSide);
+      // 양방향에 주황색 고정 블록이 가로막는 최악의 고립은 절대 불가
+      if (negBlock && posBlock) return false;
+
+      // 교차로 수직 장애물에 대한 모서리 고립 여부 체크
+      const perpendiculars = layout.filter(o => {
+        if (o.id === v.id) return false;
+        return v.dir === 'H' ? o.dir === 'V' : o.dir === 'H';
+      });
+
+      let blockingOnNegSide = 0;
+      let blockingOnPosSide = 0;
+
+      perpendiculars.forEach(o => {
+        for (let i = 0; i < o.len; i++) {
+          const cx = o.dir === 'H' ? o.x + i : o.x;
+          const cy = o.dir === 'V' ? o.y + i : o.y;
+
+          if (v.dir === 'H') {
+            if (cy === v.y) {
+              if (cx < v.x) blockingOnNegSide++;
+              if (cx >= v.x + v.len) blockingOnPosSide++;
+            }
+          } else {
+            if (cx === v.x) {
+              if (cy < v.y) blockingOnNegSide++;
+              if (cy >= v.y + v.len) blockingOnPosSide++;
+            }
+          }
+        }
+      });
+
+      // 직진 경로 양쪽에 2개 이상의 직각 차량이 이중 샌드위치로 막아서 움직일 여지가 전혀 없는 경우 배제
+      if (blockingOnNegSide >= 2 && blockingOnPosSide >= 2) return false;
+
+      return true;
     }
 
     function generateRandomLayout() {
