@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>피의 게임 데스매치 14x14 퍼즐</title>
+  <style>
+    * { box-sizing: border-box; user-select: none; -webkit-tap-highlight-color: transparent; }
+    body {
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+      background-color: #121316;
+      color: #f1f3f5;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      padding: 8px;
+    }
+
+    .header-panel {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      max-width: 350px;
+      margin-bottom: 8px;
+    }
+    .turn-badge {
+      padding: 5px 12px;
+      font-size: 13px;
+      font-weight: 700;
+      border-radius: 16px;
+      background-color: #1e2025;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+      transition: all 0.2s ease;
+    }
+    .p1-turn { color: #ff5252; border: 2px solid #ff5252; }
+    .p2-turn { color: #ffd600; border: 2px solid #ffd600; }
+
+    .score-board {
+      font-size: 12px;
+      font-weight: bold;
+      color: #ced4da;
+      text-align: right;
+    }
+
+    .status-text {
+      font-size: 12px;
+      color: #909296;
+      text-align: center;
+      margin-bottom: 6px;
+      height: 18px;
+    }
+
+    #board-container {
+      position: relative;
+      width: 350px;
+      height: 350px;
+      background: #181a1f;
+      border: 3px solid #2c2e33;
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.7);
+      touch-action: none;
+    }
+
+    .direction-label {
+      position: absolute;
+      font-weight: 800;
+      font-size: 12px;
+      color: #5c5f66;
+      z-index: 1;
+      pointer-events: none;
+    }
+    .dir-n { top: 1px; left: 50%; transform: translateX(-50%); }
+    .dir-s { bottom: 1px; left: 50%; transform: translateX(-50%); }
+    .dir-w { left: 2px; top: 50%; transform: translateY(-50%); }
+    .dir-e { right: 2px; top: 50%; transform: translateY(-50%); }
+
+    .grid-lines {
+      position: absolute;
+      width: 100%; height: 100%;
+      background-size: 25px 25px;
+      background-image: 
+        linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+      border-radius: 6px;
+    }
+
+    .inner-zone {
+      position: absolute;
+      left: 100px; top: 100px;
+      width: 150px; height: 150px;
+      border: 2px dashed rgba(255, 140, 0, 0.5);
+      pointer-events: none;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+
+    .move-target {
+      position: absolute;
+      width: 23px;
+      height: 23px;
+      border-radius: 50%;
+      background-color: rgba(0, 229, 255, 0.4);
+      border: 2px solid #00e5ff;
+      cursor: pointer;
+      z-index: 15;
+      animation: pulse 1.2s infinite alternate;
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(0.8); opacity: 0.6; }
+      100% { transform: scale(1.05); opacity: 1; }
+    }
+
+    .vehicle {
+      position: absolute;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.25), 0 2px 4px rgba(0,0,0,0.5);
+      transition: left 0.15s ease-out, top 0.15s ease-out;
+      cursor: pointer;
+      z-index: 2;
+    }
+    .vehicle.selected {
+      outline: 3px solid #00e5ff;
+      outline-offset: -1px;
+      z-index: 10 !important;
+    }
+    .vehicle.disabled-car {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .vehicle.last-moved::after {
+      content: '★';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 12px;
+      color: #ffffff;
+      text-shadow: 0 0 4px rgba(0,0,0,0.9), 0 0 2px #000;
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    .red { background-color: #e63946; }       
+    .yellow { background-color: #ffb703; }    
+    .silver { background-color: #6c757d; }    
+    .bus { background-color: #457b9d; }       
+    .block { 
+      background-color: #f77f00; 
+      border-radius: 2px; 
+      cursor: not-allowed; 
+      box-shadow: inset 0 0 0 1.5px rgba(0,0,0,0.3);
+    } 
+
+    .controls-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+      max-width: 350px;
+      margin-top: 10px;
+      gap: 10px;
+    }
+
+    .density-control {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      background: #1e2025;
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1px solid #2c2e33;
+      font-size: 12px;
+      color: #c1c2c5;
+    }
+
+    .density-control input[type=range] {
+      width: 130px;
+      accent-color: #00e5ff;
+    }
+
+    .action-row {
+      display: flex;
+      gap: 8px;
+      width: 100%;
+      justify-content: center;
+    }
+
+    .reset-btn {
+      padding: 10px 20px;
+      background: #25262b;
+      border: 1px solid #373a40;
+      color: #c1c2c5;
+      font-weight: 600;
+      font-size: 13px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      box-shadow: 0 3px 8px rgba(0,0,0,0.3);
+    }
+    .reset-btn:hover {
+      background: #2c2e33;
+      color: #fff;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header-panel">
+    <div id="turn-display" class="turn-badge p1-turn">Player 1 (레드) 턴</div>
+    <div id="score-display" class="score-board">탈출 | 🔴 0/4 vs 🟡 0/4</div>
+  </div>
+
+  <div id="status-info" class="status-text">차량을 선택하세요</div>
+
+  <div id="board-container">
+    <div class="grid-lines"></div>
+    <div class="inner-zone"></div>
+    <div class="direction-label dir-n">N</div>
+    <div class="direction-label dir-s">S</div>
+    <div class="direction-label dir-w">W</div>
+    <div class="direction-label dir-e">E</div>
+    <div id="board"></div>
+  </div>
+
+  <div class="controls-container">
+    <div class="density-control">
+      <span>외곽 중립차량 밀도</span>
+      <input type="range" id="density-slider" min="1" max="5" value="3" oninput="updateDensityLabel()">
+      <span id="density-val" style="font-weight: bold; color: #00e5ff;">보통 (24대)</span>
+    </div>
+    <div class="action-row">
+      <button class="reset-btn" onclick="initGame()">새 게임 (설정 반영 재배치)</button>
+    </div>
+  </div>
+
+  <script>
+    const BOARD_SIZE = 14;
+    const CELL_SIZE = 25; 
+
+    let currentTurn = 1; 
+    let selectedCarId = null;
+    let lastMovedCarId = null; 
+    let gameState = [];
+
+    let redEscapedCount = 0;
+    let yellowEscapedCount = 0;
+
+    const fixedBlocks = [
+      { id: 'b_n', x: 7, y: 0, len: 1, dir: 'H', type: 'block' },
+      { id: 'b_s', x: 6, y: 13, len: 1, dir: 'H', type: 'block' },
+      { id: 'b_w', x: 0, y: 6, len: 1, dir: 'H', type: 'block' },
+      { id: 'b_e', x: 13, y: 7, len: 1, dir: 'H', type: 'block' }
+    ];
+
+    const densityMap = {
+      1: { name: '매우 적음', silver: 8, bus: 4 },   
+      2: { name: '적음', silver: 12, bus: 6 },       
+      3: { name: '보통', silver: 16, bus: 8 },       
+      4: { name: '많음', silver: 20, bus: 10 },      
+      5: { name: '매우 많음', silver: 24, bus: 12 }   
+    };
+
+    function updateDensityLabel() {
+      const val = document.getElementById('density-slider').value;
+      const info = densityMap[val];
+      const total = info.silver + info.bus;
+      document.getElementById('density-val').innerText = `${info.name} (${total}대)`;
+    }
+
+    function createEmptyBoard() {
+      return Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(null));
+    }
+
+    function canPlace(board, x, y, len, dir, inInnerZoneOnly, outInnerZoneOnly) {
+      for (let i = 0; i < len; i++) {
+        const cx = dir === 'H' ? x + i : x;
+        const cy = dir === 'V' ? y + i : y;
+
+        if (cx < 0 || cx >= BOARD_SIZE || cy < 0 || cy >= BOARD_SIZE) return false;
+        if (board[cy][cx] !== null) return false;
+
+        const isInner = (cx >= 4 && cx <= 9 && cy >= 4 && cy <= 9);
+        if (inInnerZoneOnly && !isInner) return false;
+        if (outInnerZoneOnly && isInner) return false;
+      }
+      return true;
+    }
+
+    function placeOnBoard(board, id, x, y, len, dir) {
+      for (let i = 0; i < len; i++) {
+        const cx = dir === 'H' ? x + i : x;
+        const cy = dir === 'V' ? y + i : y;
+        board[cy][cx] = id;
+      }
+    }
+
+    // 빨강, 노랑 차량이 동일 직선 축 양쪽으로 갇혔는지 판별하는 함수
+    function checkSpecialCarNotTrapped(layout, v) {
+      const sameDirOccupants = layout.filter(o => {
+        if (o.id === v.id) return false;
+        return v.dir === 'H' ? o.y === v.y : o.x === v.x;
+      });
+
+      let hasNegativeSide = false;
+      let hasPositiveSide = false;
+
+      sameDirOccupants.forEach(o => {
+        for (let i = 0; i < o.len; i++) {
+          const cx = o.dir === 'H' ? o.x + i : o.x;
+          const cy = o.dir === 'V' ? o.y + i : o.y;
+
+          if (v.dir === 'H') {
+            if (cx < v.x) hasNegativeSide = true;
+            if (cx >= v.x + v.len) hasPositiveSide = true;
+          } else {
+            if (cy < v.y) hasNegativeSide = true;
+            if (cy >= v.y + v.len) hasPositiveSide = true;
+          }
+        }
+      });
+
+      return !(hasNegativeSide && hasPositiveSide);
+    }
+
+    function generateRandomLayout() {
+      const densityLevel = document.getElementById('density-slider').value;
+      const outerConfig = densityMap[densityLevel];
+
+      let attempts = 0;
+      while (attempts < 1000) {
+        attempts++;
+        const board = createEmptyBoard();
+        const layout = [];
+
+        fixedBlocks.forEach(b => {
+          placeOnBoard(board, b.id, b.x, b.y, b.len, b.dir);
+          layout.push({...b});
+        });
+
+        const innerVehicles = [
+          ...Array(4).fill(null).map((_, i) => ({ id: `r_${i}`, len: 2, type: 'red' })),
+          ...Array(4).fill(null).map((_, i) => ({ id: `y_${i}`, len: 2, type: 'yellow' }))
+        ];
+
+        const outerVehicles = [
+          ...Array(outerConfig.silver).fill(null).map((_, i) => ({ id: `s_${i}`, len: 2, type: 'silver' })),
+          ...Array(outerConfig.bus).fill(null).map((_, i) => ({ id: `b_${i}`, len: 3, type: 'bus' }))
+        ];
+
+        let success = true;
+
+        for (let v of innerVehicles) {
+          let placed = false;
+          let trys = 0;
+          while (!placed && trys < 120) {
+            trys++;
+            const dir = Math.random() < 0.5 ? 'H' : 'V';
+            const x = Math.floor(Math.random() * 6) + 4;
+            const y = Math.floor(Math.random() * 6) + 4;
+            if (canPlace(board, x, y, v.len, dir, true, false)) {
+              placeOnBoard(board, v.id, x, y, v.len, dir);
+              layout.push({ ...v, x, y, dir });
+              placed = true;
+            }
+          }
+          if (!placed) { success = false; break; }
+        }
+
+        if (!success) continue;
+
+        for (let v of outerVehicles) {
+          let placed = false;
+          let trys = 0;
+          while (!placed && trys < 250) {
+            trys++;
+            const dir = Math.random() < 0.5 ? 'H' : 'V';
+            const x = Math.floor(Math.random() * BOARD_SIZE);
+            const y = Math.floor(Math.random() * BOARD_SIZE);
+            if (canPlace(board, x, y, v.len, dir, false, true)) {
+              placeOnBoard(board, v.id, x, y, v.len, dir);
+              layout.push({ ...v, x, y, dir });
+              placed = true;
+            }
+          }
+          if (!placed) { success = false; break; }
+        }
+
+        if (!success) continue;
+
+        // 특수 차량(레드, 옐로우) 양쪽 차단 검사
+        const specials = layout.filter(item => item.type === 'red' || item.type === 'yellow');
+        let allValid = true;
+        for (let sv of specials) {
+          if (!checkSpecialCarNotTrapped(layout, sv)) {
+            allValid = false;
+            break;
+          }
+        }
+
+        if (allValid) return layout;
+      }
+      return null;
+    }
+
+    function initGame() {
+      const layout = generateRandomLayout();
+      if (!layout) {
+        initGame();
+        return;
+      }
+      gameState = layout;
+      currentTurn = 1;
+      selectedCarId = null;
+      lastMovedCarId = null;
+      redEscapedCount = 0;
+      yellowEscapedCount = 0;
+
+      updateTurnDisplay();
+      updateScoreDisplay();
+      render();
+    }
+
+    function getOccupiedGrid(excludeId) {
+      const grid = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(false));
+      gameState.forEach(obj => {
+        if (obj.id === excludeId) return;
+        for (let i = 0; i < obj.len; i++) {
+          const cx = obj.dir === 'H' ? obj.x + i : obj.x;
+          const cy = obj.dir === 'V' ? obj.y + i : obj.y;
+          if (cx >= 0 && cx < BOARD_SIZE && cy >= 0 && cy < BOARD_SIZE) {
+            grid[cy][cx] = true;
+          }
+        }
+      });
+      return grid;
+    }
+
+    function getValidMoveTargets(car) {
+      const targets = [];
+      if (!car) return targets;
+
+      const grid = getOccupiedGrid(car.id);
+
+      if (car.dir === 'H') {
+        for (let nx = car.x - 1; nx >= 0; nx--) {
+          if (grid[car.y][nx]) break;
+          targets.push({ x: nx, y: car.y });
+        }
+        for (let nx = car.x + 1; nx + car.len <= BOARD_SIZE; nx++) {
+          if (grid[car.y][nx + car.len - 1]) break;
+          targets.push({ x: nx, y: car.y });
+        }
+      } else { 
+        for (let ny = car.y - 1; ny >= 0; ny--) {
+          if (grid[ny][car.x]) break;
+          targets.push({ x: car.x, y: ny });
+        }
+        for (let ny = car.y + 1; ny + car.len <= BOARD_SIZE; ny++) {
+          if (grid[ny + car.len - 1][car.x]) break;
+          targets.push({ x: car.x, y: ny });
+        }
+      }
+
+      return targets;
+    }
+
+    function render() {
+      const boardEl = document.getElementById('board');
+      boardEl.innerHTML = '';
+
+      gameState.forEach(item => {
+        const el = document.createElement('div');
+        el.classList.add('vehicle', item.type);
+        
+        if (item.id === selectedCarId) el.classList.add('selected');
+        if (item.id === lastMovedCarId) el.classList.add('last-moved');
+
+        const isOpponent = (currentTurn === 1 && item.type === 'yellow') || (currentTurn === 2 && item.type === 'red');
+        const isLastMovedGrey = (item.id === lastMovedCarId && (item.type === 'silver' || item.type === 'bus'));
+
+        if (isOpponent || isLastMovedGrey) {
+          el.classList.add('disabled-car');
+        }
+
+        const width = item.dir === 'H' ? item.len * CELL_SIZE - 2 : CELL_SIZE - 2;
+        const height = item.dir === 'V' ? item.len * CELL_SIZE - 2 : CELL_SIZE - 2;
+
+        el.style.width = `${width}px`;
+        el.style.height = `${height}px`;
+        el.style.left = `${item.x * CELL_SIZE + 1}px`;
+        el.style.top = `${item.y * CELL_SIZE + 1}px`;
+
+        if (item.type !== 'block') {
+          el.addEventListener('click', () => selectCar(item.id));
+        }
+
+        boardEl.appendChild(el);
+      });
+
+      if (selectedCarId) {
+        const selectedCar = gameState.find(c => c.id === selectedCarId);
+        const targets = getValidMoveTargets(selectedCar);
+
+        targets.forEach(t => {
+          const targetEl = document.createElement('div');
+          targetEl.classList.add('move-target');
+
+          targetEl.style.left = `${t.x * CELL_SIZE + 1}px`;
+          targetEl.style.top = `${t.y * CELL_SIZE + 1}px`;
+
+          targetEl.addEventListener('click', (e) => {
+            e.stopPropagation();
+            moveToTarget(selectedCar, t.x, t.y);
+          });
+
+          boardEl.appendChild(targetEl);
+        });
+      }
+    }
+
+    function selectCar(id) {
+      const car = gameState.find(c => c.id === id);
+      const statusInfo = document.getElementById('status-info');
+
+      if (currentTurn === 1 && car.type === 'yellow') {
+        statusInfo.innerText = "⚠️ 상대방(노란색) 차량 선택 불가!";
+        return;
+      }
+      if (currentTurn === 2 && car.type === 'red') {
+        statusInfo.innerText = "⚠️ 상대방(빨간색) 차량 선택 불가!";
+        return;
+      }
+
+      if (id === lastMovedCarId && (car.type === 'silver' || car.type === 'bus')) {
+        statusInfo.innerText = "⚠️ 직전 턴 이동 회색차 선택 불가!";
+        return;
+      }
+
+      selectedCarId = (selectedCarId === id) ? null : id;
+
+      if (selectedCarId) {
+        statusInfo.innerText = "이동할 위치(푸른 원)를 터치하세요";
+      } else {
+        statusInfo.innerText = "차량을 선택하세요";
+      }
+      render();
+    }
+
+    function isAtOuterEdge(car, x, y) {
+      if (car.dir === 'H') {
+        return (x === 0 || x + car.len === BOARD_SIZE);
+      } else {
+        return (y === 0 || y + car.len === BOARD_SIZE);
+      }
+    }
+
+    function moveToTarget(car, targetX, targetY) {
+      car.x = targetX;
+      car.y = targetY;
+
+      const statusInfo = document.getElementById('status-info');
+
+      if ((car.type === 'red' || car.type === 'yellow') && isAtOuterEdge(car, targetX, targetY)) {
+        gameState = gameState.filter(c => c.id !== car.id);
+        
+        if (car.type === 'red') redEscapedCount++;
+        if (car.type === 'yellow') yellowEscapedCount++;
+
+        updateScoreDisplay();
+        statusInfo.innerText = `🎉 ${car.type === 'red' ? '레드' : '옐로우'} 차량 1대 탈출 성공!`;
+        
+        lastMovedCarId = null;
+
+        if (redEscapedCount >= 4) {
+          alert("🎉 Player 1 (레드) 승리! 모든 차량이 탈출했습니다.");
+          initGame();
+          return;
+        }
+        if (yellowEscapedCount >= 4) {
+          alert("🎉 Player 2 (옐로우) 승리! 모든 차량이 탈출했습니다.");
+          initGame();
+          return;
+        }
+      } else {
+        lastMovedCarId = car.id;
+        statusInfo.innerText = "차량을 선택하세요";
+      }
+
+      selectedCarId = null;
+      currentTurn = currentTurn === 1 ? 2 : 1;
+
+      updateTurnDisplay();
+      render();
+    }
+
+    function updateTurnDisplay() {
+      const display = document.getElementById('turn-display');
+      if (currentTurn === 1) {
+        display.innerText = "Player 1 (레드) 턴";
+        display.className = "turn-badge p1-turn";
+      } else {
+        display.innerText = "Player 2 (옐로우) 턴";
+        display.className = "turn-badge p2-turn";
+      }
+    }
+
+    function updateScoreDisplay() {
+      document.getElementById('score-display').innerText = `탈출 | 🔴 ${redEscapedCount}/4 vs 🟡 ${yellowEscapedCount}/4`;
+    }
+
+    updateDensityLabel();
+    initGame();
+  </script>
+</body>
+</html>
